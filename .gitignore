@@ -2,6 +2,28 @@
 __pycache__/
 *.py[codz]
 *$py.class
+# Secrets — never commit
+.env
+
+.memory
+
+# Vector store data
+.chromadb/
+
+pyproject.toml
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+
+# Poetry
+poetry.lock
+
+
+# Virtual environments
+.venv/
+venv/
 
 # C extensions
 *.so
