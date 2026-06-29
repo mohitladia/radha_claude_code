@@ -19,6 +19,10 @@ console = Console()
 logger = get_logger(__name__)
 
 
+# Load Langsmith project key
+langsmith_project_key = os.getenv("LANGSMITH_PROJECT_KEY")
+
+
 def get_or_create_index():
    repo_path = str(Path.cwd())
    logger.info(f"Checking index for: {repo_path}")

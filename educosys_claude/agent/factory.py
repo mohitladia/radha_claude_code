@@ -5,7 +5,7 @@ from langchain.agents import create_agent
 
 from educosys_claude.llm.factory import get_llm
 from educosys_claude.agent.tools import search_codebase
-from educosys_claude.memory.short_term import get_checkpointer
+from educosys_claude.memory.short_term import get_checkpointer, get_summarization_middleware
 from educosys_claude.observability.logger import get_logger
 
 
@@ -50,7 +50,7 @@ def build_agent():
       file_exists,
   ]
   checkpointer = get_checkpointer()
-
+  middleware = get_summarization_middleware()
 
 
 
@@ -59,4 +59,5 @@ def build_agent():
       tools=tools,
       system_prompt=SYSTEM_PROMPT,
       checkpointer=checkpointer,
+      middleware=[middleware],
   )

@@ -1,106 +1,101 @@
 # radha-claude-code
 
-Radha Claude Code is a powerful code assistant designed to answer questions regarding any codebase using Retrieval-Augmented Generation (RAG) techniques. It leverages advanced language models and embeddings to provide an interactive question-answer interface for developers and users.
+Radha Claude Code is a sophisticated and modular code assistant that leverages advanced Retrieval-Augmented Generation (RAG) techniques to assist developers in querying and understanding complex codebases. By utilizing state-of-the-art language models and embedding technologies, it provides a dynamic, interactive question-answer interface tailored for both developers and learners.
 
 ## Project Overview
 
-The project is designed with a modular architecture, integrating various components for indexing, searching, and querying codebases using both keyword and vector-based approaches.
+Radha Claude Code is engineered to integrate seamlessly with diverse codebases, offering efficient indexing, searching, and querying capabilities through a combination of keyword and vector-based approaches.
 
 ## Key Features
 
-- **Language Models (LLM) and Embeddings**: Utilizes models from OpenAI for processing language and embedding data.
-- **Modular Indexing and Retrieval**: Supports hybrid, vector, and keyword retrieval modes using Qdrant and ChromaDB.
-- **Configurable Architecture**: Components can be dynamically loaded and configured based on user preferences.
-- **Session Management**: Allows for session tracking and switching, useful for maintaining conversational context.
+- **Advanced Language Processing**: Employs OpenAI's language models for superior language understanding and context-aware embedding generation.
+- **Flexible Indexing and Retrieval**: Supports multiple retrieval modes including hybrid, vector, and keyword with integration options for Qdrant and ChromaDB.
+- **Highly Configurable**: Enables users to customize architecture and functionality by simply altering configuration settings.
+- **Robust Session Management**: Facilitates smooth session transitions and context retention across multiple queries.
 
 ## Project Architecture
 
-The architecture of the Radha Claude Code system is designed around modular components that work together to provide seamless code querying capabilities.
+Radha Claude Code is structured around several modular components each fulfilling a specific role in the querying process.
 
-### Components
+### Core Components
 
-1. **LLM and Embeddings**: Used for natural language understanding and embedding generation, configured via `config.yaml`.
-2. **Indexers**: Responsible for indexing the codebase using different strategies based on configuration (`educosys_claude/context/indexers`).
-3. **Retrievers**: Fetch data from the indexed storage using either vector or keyword-based retrieval (`educosys_claude/context/retrievers`).
-4. **Session Management**: Handles user sessions to maintain conversational context across queries.
+1. **Language Models and Embeddings**: Configurable via `config.yaml`, these are crucial for processing user queries and generating embeddings.
+2. **Indexers**: Located in `educosys_claude/context/indexers`, these components utilize configured strategies to index the codebase efficiently.
+3. **Retrievers**: Implement different retrieval strategies to fetch indexed data, found in `educosys_claude/context/retrievers`.
+4. **Session Handlers**: Manage ongoing user sessions to ensure context continuity and efficient session switching.
 
-### Component Interaction
+### Detailed Component Interaction
 
-Below is how components typically interact during a request:
+1. **Initialization**: Begins with setting up language models and embedding configurations.
+2. **Query Processing**: Upon receiving a query, selects appropriate retrieval mode and accesses indexed data.
+3. **Response Generation**: Utilizes the LLM to generate and return user-specific responses.
 
-- A user query is received via a command.
-- The query is processed to determine the required retrieval mode and indexed data.
-- The LLM generates a response, which is returned to the user.
+### Configuration Details
 
-### Configuration Options
+Configurations are centralized in the `config.yaml` file, offering flexibility through:
 
-The `config.yaml` file specifies various configuration options:
+- **Language Models and Providers**: Define the preferred models and service providers.
+- **Retrieval Strategies**: Choose among hybrid, vector, and keyword modes to meet specific indexing needs.
+- **Database Settings**: Elaborate configurations for ChromaDB and Qdrant supporting persistence and efficient data retrieval.
 
-- **LLM Settings**: Define the language model and provider, such as OpenAI.
-- **Embeddings Settings**: Configurable embedding models and providers.
-- **Indexing and Retrieval Modes**: Options include hybrid, vector, and keyword modes.
-- **Databases**: Integration settings for ChromaDB and Qdrant for data persistence and retrieval.
+### Modules
 
-### Modules Description
-
-- **Main (`educosys_claude/main.py`)**: Handles the initial setup and runs the main interactive loop for processing user commands.
-- **Agent Orchestrator**: Manages agents for handling specific user queries.
-- **Indexers and Retrievers**: Provide various strategies for indexing and retrieval based on the configuration.
-- **Memory Management**: Supports persistent memory across sessions, defined in `educosys_claude/memory`.
+- **Core Module (`educosys_claude/main.py`)**: Initiates setup and manages command processing.
+- **Agent Management**: Directs query handling through orchestrated agents.
+- **Indexing and Retrieval Modules**: Adapt to configured indexing and retrieval strategies.
+- **Memory and Session Modules**: Located in `educosys_claude/memory`, these manage persistent session states and memory.
 
 ## Use Cases
 
-Radha Claude Code can be used for:
+Radha Claude Code caters to a variety of scenarios, including:
 
-- **Codebase Analysis**: Quickly querying large codebases to understand module interdependencies or fetch documentation snippets.
-- **Development Support**: Assisting developers with code examples and documentation retrieval.
-- **Educational Purposes**: Learning and exploring programming techniques from existing codebases.
+- **In-depth Codebase Analysis**: Offers clarity on codebase interdependencies and documentation access.
+- **Development Assistance**: Provides contextual examples and retrieves relevant coding documentation.
+- **Educational Exploration**: Facilitates the learning of programming techniques through comprehensive codebase insights.
 
 ## Installation
 
-Ensure you have Python 3.12 or above installed. This project uses Poetry for dependency management.
+Ensure Python 3.12+ is installed. Radha Claude Code employs Poetry for managing dependencies.
 
 1. Clone the repository.
 2. Navigate to the project directory.
-3. Install dependencies:
+3. Install dependencies using:
    ```bash
    poetry install
    ```
 
 ## Usage
 
-To run the code assistant, use the following command:
-
+Start the assistant with:
 ```bash
 poetry run educosys_claude
 ```
 
-The system supports several commands:
-- `/ask <question>`: Ask a question about the codebase.
-- `/show_index`: Display all indexed chunks.
-- `/new_session`: Start a fresh conversation session.
-- `/switch <session_id>`: Switch to a specific session.
-- `/session`: Display the current session ID.
+Supported commands include:
+- **`/ask <question>`**: Query the codebase.
+- **`/show_index`**: View all indexed sections.
+- **`/new_session`**: Initiate a new interactive session.
+- **`/switch <session_id>`**: Transition to another session.
+- **`/session`**: Display the current session ID.
 
 ## Configuration
 
-Modify the `config.yaml` file to change the settings for LLM, embeddings, databases, and retrieval modes.
+Edit `config.yaml` to personalize settings related to:
 
-- Language Model Provider: `openai`
-- Embeddings Provider: `openai`
-- Vector Store and Retrieval Mode: Supports providers like `qdrant` and `chromadb`.
+- **LLM and Embeddings Providers**: Options like `openai`.
+- **Retrieval Modes**: Choose from providers such as `qdrant` or `chromadb`.
 
 ## Dependencies
 
-Key dependencies include:
-- `openai`: For language models and embeddings.
-- `chromadb` and `qdrant`: For data persistence and vector storage.
-- `rich`: For formatted console output.
-- Others: `langchain`, `pydantic`, `python-dotenv`, `fastembed`.
+Core dependencies involve:
+- **`openai`**: Powers the language models and embeddings.
+- **`chromadb`, `qdrant`**: Critical for vector storage.
+- **`rich`**: Enhances console interactivity.
+- Additional libraries: `langchain`, `pydantic`, `python-dotenv`, `fastembed`.
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request with improvements.
+Contributions enhance project utility! Submit issues or pull requests for potential improvements.
 
 ## Author
 
