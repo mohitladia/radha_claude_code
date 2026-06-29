@@ -45,6 +45,28 @@ Configurations are centralized in the `config.yaml` file, offering flexibility t
 - **Indexing and Retrieval Modules**: Adapt to configured indexing and retrieval strategies.
 - **Memory and Session Modules**: Located in `educosys_claude/memory`, these manage persistent session states and memory.
 
+### In-depth Explanation of Key Features
+
+- **Advanced Language Processing**: The integration with OpenAI's language models allows for the comprehension of complex coding queries, providing nuanced insights and tailored solutions. The system processes natural language, translating it into actions or providing explanations that are contextually relevant to the codebase in question.
+
+- **Flexibility in Indexing and Retrieval**: The software supports diverse modes of indexing and retrieval to ensure both speed and accuracy. Hybrid retrieval combines vector and keyword-based searches, essential for handling large codebases where specific queries might require different retrieval strategies.
+
+- **Configuration Flexibility**: Radha Claude Code enables users to easily tweak the underlying architecture. From selecting different language models to opting for various database configurations, users can customize the system to align with their specific needs and available resources.
+
+### Extended Detailed Component Interaction
+
+- **Initialization Process**: The initialization sets up the environment by loading configurations and preparing language models and embeddings crucial for query understanding and response generation.
+
+- **Query Handling Mechanism**: When a question is asked, the system evaluates it using embeddings and selects the best retrieval strategy (hybrid, vector, or keyword) to fetch relevant code snippets. It then constructs a response using language generation models to provide an articulate answer.
+
+### Real-world Use Cases
+
+- **Complex Refactorings**: Developers can query for interdependencies within a codebase, aiding in the safe refactoring of systems without missing critical dependencies.
+  
+- **Coding Standards Compliance**: The assistant can suggest improvements or highlight areas that do not conform to predetermined coding standards defined within the configuration settings.
+
+- **Enhanced Learning**: New developers can interact with the system to understand logic flow and architecture decisions, providing a great learning aid through exposure to real-world codebases.
+
 ## Use Cases
 
 Radha Claude Code caters to a variety of scenarios, including:
