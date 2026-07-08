@@ -27,6 +27,7 @@ venv/
 
 # C extensions
 *.so
+.radha/
 
 # Distribution / packaging
 .Python

@@ -25,7 +25,7 @@ vector_store:
 
 
 qdrant:
- collection_name: ladiamohit
+ collection_name: ladiamohit92
 
 
 memory:
