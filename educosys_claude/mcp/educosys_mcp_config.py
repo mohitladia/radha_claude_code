@@ -21,5 +21,9 @@ def load_educosys_mcp_configs() -> dict:
  os.environ.setdefault("CWD", str(Path.cwd()))
  raw = json.loads(_CONFIG_PATH.read_text())
  # Replace ${VAR} placeholders in the config with actual env var values
- resolved = re.sub(r"\$\{(\w+)\}", lambda m: os.getenv(m.group(1), ""), json.dumps(raw))
+ resolved = re.sub(
+    r"\$\{(\w+)\}",
+    lambda m: json.dumps(os.getenv(m.group(1), ""))[1:-1],
+    json.dumps(raw),
+)
  return json.loads(resolved).get("mcp_servers", {})

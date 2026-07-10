@@ -7,6 +7,19 @@
        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
      },
      "transport": "stdio"
-   }
+   },
+   "langchain-docs":{
+     "url": "https://docs.langchain.com/mcp",
+     "transport": "http"
+   },
+    "filesystem": {
+       "command": "npx",
+       "args": [
+         "-y",
+         "@modelcontextprotocol/server-filesystem",
+         "${CWD}"
+       ],
+       "transport": "stdio"
+     }
  }
 }
