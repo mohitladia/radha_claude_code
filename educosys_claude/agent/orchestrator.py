@@ -1,4 +1,5 @@
 import json
+import os
 import pprint
 from langgraph.types import Command
 from rich.console import Console
@@ -6,18 +7,35 @@ from rich.prompt import Prompt
 
 from educosys_claude.observability.logger import get_logger
 
+try:
+    from educosys_claude.agent.hitl_github_actions import handle_query_github_hitl
+    HITL_GITHUB_AVAILABLE = True
+except ImportError:
+    HITL_GITHUB_AVAILABLE = False
 
 logger = get_logger(__name__)
 console = Console()
 
 
+def _in_github_actions() -> bool:
+    """Detect if running inside GitHub Actions."""
+    return os.getenv("GITHUB_ACTIONS") == "true"
+
+
 async def handle_query(agent, question: str, thread_id: str) -> str:
-    """Entry point for all user queries - invokes the agent, handling any
-    human-in-the-loop approvals along the way."""
+    """
+    Entry point for all user queries.
+    Auto-detects GitHub Actions and uses appropriate HITL handler.
+    """
     logger.info(f"Handling query for session {thread_id}: {question}")
     agent_config = {"configurable": {"thread_id": thread_id}}
 
     try:
+        # Use GitHub Actions HITL if in CI, otherwise local prompt
+        if _in_github_actions() and HITL_GITHUB_AVAILABLE:
+            logger.info("GitHub Actions detected - using GitHub HITL handler")
+            return await handle_query_github_hitl(agent, question, thread_id)
+
         result = await agent.ainvoke(
             {"messages": [{"role": "user", "content": question}]},
             config=agent_config,
@@ -72,7 +90,7 @@ async def _resolve_interrupt(agent, result, agent_config: dict):
         else:
             reason = Prompt.ask("Reason for rejection", default="")
             decisions.append({"type": "reject", "message": reason})
-    
+
     logger.info(
     "Resume decisions:\n%s",
     pprint.pformat(decisions),
