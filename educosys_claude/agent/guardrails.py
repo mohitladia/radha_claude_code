@@ -388,7 +388,38 @@ class PIIMiddleware(AgentMiddleware):
         handler,
     ) -> Union[ModelResponse, AIMessage]:
         """Async: Process model input for PII before calling the LLM."""
-        return self.wrap_model_call(request, handler)
+        # In async chain, handler must be awaited
+        if "model_input" in self.scope and request.messages:
+            processed_messages = []
+            for msg in request.messages:
+                if hasattr(msg, "content") and msg.content:
+                    content, _, _ = _process_message_content(
+                        msg.content, self.patterns, [], "model_input", True, False
+                    )
+                    kwargs = getattr(msg, "additional_kwargs", {}).copy()
+                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                        kwargs["tool_calls"] = msg.tool_calls
+                    if hasattr(msg, "tool_call_id") and msg.tool_call_id:
+                        kwargs["tool_call_id"] = msg.tool_call_id
+                    if hasattr(msg, "name") and msg.name:
+                        kwargs["name"] = msg.name
+                    new_msg = type(msg)(content=content, **kwargs)
+                    processed_messages.append(new_msg)
+                else:
+                    processed_messages.append(msg)
+
+            request = ModelRequest(
+                model=request.model,
+                messages=processed_messages,
+                system_message=request.system_message,
+                tool_choice=request.tool_choice,
+                tools=request.tools,
+                response_format=request.response_format,
+                state=request.state,
+                runtime=request.runtime,
+            )
+
+        return await handler(request)
 
     def wrap_model_response(
         self,
@@ -425,7 +456,28 @@ class PIIMiddleware(AgentMiddleware):
         handler,
     ) -> Union[ModelResponse, AIMessage]:
         """Async: Process model output for PII before returning."""
-        return self.wrap_model_response(response, handler)
+        if "model_output" in self.scope and response.result:
+            processed_messages = []
+            for msg in response.result:
+                if hasattr(msg, "content") and msg.content:
+                    content, _, _ = _process_message_content(
+                        msg.content, self.patterns, [], "model_output", True, False
+                    )
+                    kwargs = getattr(msg, "additional_kwargs", {}).copy()
+                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                        kwargs["tool_calls"] = msg.tool_calls
+                    if hasattr(msg, "tool_call_id") and msg.tool_call_id:
+                        kwargs["tool_call_id"] = msg.tool_call_id
+                    if hasattr(msg, "name") and msg.name:
+                        kwargs["name"] = msg.name
+                    new_msg = type(msg)(content=content, **kwargs)
+                    processed_messages.append(new_msg)
+                else:
+                    processed_messages.append(msg)
+
+            response = ModelResponse(result=processed_messages)
+
+        return await handler(response)
 
     def wrap_tool_call(
         self,
@@ -461,7 +513,27 @@ class PIIMiddleware(AgentMiddleware):
         handler,
     ) -> Union[ToolMessage, Command]:
         """Async: Process tool arguments for PII before executing tool."""
-        return self.wrap_tool_call(request, handler)
+        if "tool_input" in self.scope and request.tool_call:
+            args = request.tool_call.get("args", {})
+            if isinstance(args, dict):
+                processed_args = {}
+                for key, value in args.items():
+                    if isinstance(value, str):
+                        content, _, _ = _process_message_content(
+                            value, self.patterns, [], f"tool_input:{key}", True, False
+                        )
+                        processed_args[key] = content
+                    else:
+                        processed_args[key] = value
+                if processed_args != args:
+                    request = ToolCallRequest(
+                        tool_call={**request.tool_call, "args": processed_args},
+                        tool=request.tool,
+                        state=request.state,
+                        runtime=request.runtime,
+                    )
+
+        return await handler(request)
 
     def wrap_tool_response(
         self,
@@ -616,7 +688,14 @@ class ContentFilterMiddleware(AgentMiddleware):
         handler,
     ) -> Union[ModelResponse, AIMessage]:
         """Async: Scan model input for prohibited content."""
-        return self.wrap_model_call(request, handler)
+        if "model_input" in self.scope and request.messages:
+            for msg in request.messages:
+                if hasattr(msg, "content") and msg.content:
+                    _process_message_content(
+                        msg.content, [], self.rules, "model_input", False, True
+                    )
+
+        return await handler(request)
 
     async def awrap_model_response(
         self,
@@ -624,7 +703,14 @@ class ContentFilterMiddleware(AgentMiddleware):
         handler,
     ) -> Union[ModelResponse, AIMessage]:
         """Async: Scan model output for prohibited content."""
-        return self.wrap_model_response(response, handler)
+        if "model_output" in self.scope and response.result:
+            for msg in response.result:
+                if hasattr(msg, "content") and msg.content:
+                    _process_message_content(
+                        msg.content, [], self.rules, "model_output", False, True
+                    )
+
+        return await handler(response)
 
     async def awrap_tool_call(
         self,
@@ -632,7 +718,16 @@ class ContentFilterMiddleware(AgentMiddleware):
         handler,
     ) -> Union[ToolMessage, Command]:
         """Async: Scan tool arguments for prohibited content."""
-        return self.wrap_tool_call(request, handler)
+        if "tool_input" in self.scope and request.tool_call:
+            args = request.tool_call.get("args", {})
+            if isinstance(args, dict):
+                for key, value in args.items():
+                    if isinstance(value, str):
+                        _process_message_content(
+                            value, [], self.rules, f"tool_input:{key}", False, True
+                        )
+
+        return await handler(request)
 
     async def awrap_tool_response(
         self,
@@ -640,7 +735,13 @@ class ContentFilterMiddleware(AgentMiddleware):
         handler,
     ) -> ToolMessage:
         """Async: Scan tool output for prohibited content."""
-        return self.wrap_tool_response(response, handler)
+        if "tool_output" in self.scope and response.content:
+            if isinstance(response.content, str):
+                _process_message_content(
+                    response.content, [], self.rules, f"tool_output:{response.name}", False, True
+                )
+
+        return await handler(response)
 
 
 def create_pii_middleware_from_config() -> Optional[PIIMiddleware]:
