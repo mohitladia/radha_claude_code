@@ -248,6 +248,31 @@ For automated CI you can script the REPL using `expect` or a similar tool, feedi
 2. Add the server name to the `mcp_servers` list in `config.yaml`.
 3. Restart the agent; the server’s tools will be auto‑loaded.
 
+### GitHub Actions Human-in-the-Loop (HITL)
+
+The agent supports **Human-in-the-Loop approval** for dangerous tools (shell commands, file writes, GitHub API calls) in CI environments.
+
+**Three Approaches:**
+
+| Approach | Mechanism | Best For |
+|----------|-----------|----------|
+| Environment Protection | Workflow pauses at `environment: production` | Production deployments, compliance |
+| Comment Polling (default) | Bot posts comment, polls for `/APPROVE`/`/REJECT`/`/EDIT` | General CI, standard `GITHUB_TOKEN` |
+| GitHub Gist | Private gist stores state, polls for updates | Fork PRs, minimal permissions |
+
+**Quick Start:**
+```bash
+# 1. Create workflow (copy from agent/hitl_github_actions.py __main__)
+python -m educosys_claude.agent.hitl_github_actions > .github/workflows/agent.yml
+
+# 2. Trigger via GitHub CLI
+gh workflow run agent.yml -f question="Create a PR adding a README"
+```
+
+**Human Review:** Bot posts comment on tracking issue → Reviewer replies `/APPROVE` → Workflow resumes.
+
+See [docs/HITL_GITHUB_ACTIONS.md](docs/HITL_GITHUB_ACTIONS.md) for full setup, configuration, and troubleshooting.
+
 ## 🚀 Usage Examples for Retrieval Modes
 
 Set `rag.mode` in `config.yaml` and observe the differences:
