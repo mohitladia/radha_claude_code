@@ -352,8 +352,18 @@ class PIIMiddleware(AgentMiddleware):
                     content, _, _ = _process_message_content(
                         msg.content, self.patterns, [], "model_input", True, False
                     )
-                    # Create new message with redacted content
-                    new_msg = type(msg)(content=content, **getattr(msg, "additional_kwargs", {}))
+                    # Create new message with redacted content, preserving all attributes
+                    kwargs = getattr(msg, "additional_kwargs", {}).copy()
+                    # Preserve tool_calls if present (critical for tool calling chain)
+                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                        kwargs["tool_calls"] = msg.tool_calls
+                    # Preserve tool_call_id if present (required for ToolMessage constructor)
+                    if hasattr(msg, "tool_call_id") and msg.tool_call_id:
+                        kwargs["tool_call_id"] = msg.tool_call_id
+                    # Preserve name if present
+                    if hasattr(msg, "name") and msg.name:
+                        kwargs["name"] = msg.name
+                    new_msg = type(msg)(content=content, **kwargs)
                     processed_messages.append(new_msg)
                 else:
                     processed_messages.append(msg)
@@ -372,6 +382,14 @@ class PIIMiddleware(AgentMiddleware):
 
         return handler(request)
 
+    async def awrap_model_call(
+        self,
+        request: ModelRequest,
+        handler,
+    ) -> Union[ModelResponse, AIMessage]:
+        """Async: Process model input for PII before calling the LLM."""
+        return self.wrap_model_call(request, handler)
+
     def wrap_model_response(
         self,
         response: ModelResponse,
@@ -385,7 +403,14 @@ class PIIMiddleware(AgentMiddleware):
                     content, _, _ = _process_message_content(
                         msg.content, self.patterns, [], "model_output", True, False
                     )
-                    new_msg = type(msg)(content=content, **getattr(msg, "additional_kwargs", {}))
+                    kwargs = getattr(msg, "additional_kwargs", {}).copy()
+                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                        kwargs["tool_calls"] = msg.tool_calls
+                    if hasattr(msg, "tool_call_id") and msg.tool_call_id:
+                        kwargs["tool_call_id"] = msg.tool_call_id
+                    if hasattr(msg, "name") and msg.name:
+                        kwargs["name"] = msg.name
+                    new_msg = type(msg)(content=content, **kwargs)
                     processed_messages.append(new_msg)
                 else:
                     processed_messages.append(msg)
@@ -393,6 +418,14 @@ class PIIMiddleware(AgentMiddleware):
             response = ModelResponse(result=processed_messages)
 
         return response
+
+    async def awrap_model_response(
+        self,
+        response: ModelResponse,
+        handler,
+    ) -> Union[ModelResponse, AIMessage]:
+        """Async: Process model output for PII before returning."""
+        return self.wrap_model_response(response, handler)
 
     def wrap_tool_call(
         self,
@@ -422,6 +455,14 @@ class PIIMiddleware(AgentMiddleware):
 
         return handler(request)
 
+    async def awrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler,
+    ) -> Union[ToolMessage, Command]:
+        """Async: Process tool arguments for PII before executing tool."""
+        return self.wrap_tool_call(request, handler)
+
     def wrap_tool_response(
         self,
         response: ToolMessage,
@@ -442,6 +483,14 @@ class PIIMiddleware(AgentMiddleware):
                     )
 
         return response
+
+    async def awrap_tool_response(
+        self,
+        response: ToolMessage,
+        handler,
+    ) -> ToolMessage:
+        """Async: Process tool output for PII before returning to agent."""
+        return self.wrap_tool_response(response, handler)
 
 
 class ContentFilterMiddleware(AgentMiddleware):
@@ -560,6 +609,38 @@ class ContentFilterMiddleware(AgentMiddleware):
                 )
 
         return response
+
+    async def awrap_model_call(
+        self,
+        request: ModelRequest,
+        handler,
+    ) -> Union[ModelResponse, AIMessage]:
+        """Async: Scan model input for prohibited content."""
+        return self.wrap_model_call(request, handler)
+
+    async def awrap_model_response(
+        self,
+        response: ModelResponse,
+        handler,
+    ) -> Union[ModelResponse, AIMessage]:
+        """Async: Scan model output for prohibited content."""
+        return self.wrap_model_response(response, handler)
+
+    async def awrap_tool_call(
+        self,
+        request: ToolCallRequest,
+        handler,
+    ) -> Union[ToolMessage, Command]:
+        """Async: Scan tool arguments for prohibited content."""
+        return self.wrap_tool_call(request, handler)
+
+    async def awrap_tool_response(
+        self,
+        response: ToolMessage,
+        handler,
+    ) -> ToolMessage:
+        """Async: Scan tool output for prohibited content."""
+        return self.wrap_tool_response(response, handler)
 
 
 def create_pii_middleware_from_config() -> Optional[PIIMiddleware]:
