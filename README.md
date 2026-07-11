@@ -57,7 +57,7 @@ A sophisticated, modular code assistant powered by Retrieval-Augmented Generatio
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/radha_claude_code.git
+   git clone https://github.com/mohitladia/radha_claude_code.git
    cd radha_claude_code
    ```
 
@@ -331,7 +331,7 @@ Please read our [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) to understand our commu
 For questions, feedback, or support:
 - Open an issue on GitHub
 - Email: ladiamohit92@gmail.com
-- Discussions: [GitHub Discussions](https://github.com/yourusername/radha_claude_code/discussions)
+- Discussions: [GitHub Discussions](https://github.com/mohitladia/radha_claude_code/discussions)
 
 ## 🙏 Acknowledgments
 
