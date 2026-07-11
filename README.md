@@ -337,3 +337,12 @@ run()
 ---
 
 **Radha Claude Code** – Making codebases understandable through intelligent interaction. 🚀
+
+## 📚 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [docs/AGENT_PACKAGE.md](docs/AGENT_PACKAGE.md) | Agent factory, orchestrator, HITL middleware, GitHub Actions integration |
+| [docs/MEMORY_PACKAGE.md](docs/MEMORY_PACKAGE.md) | Short-term (checkpointer, summarization) & Long-term (fact extraction) memory |
+| [docs/MIDDLEWARE_PACKAGE.md](docs/MIDDLEWARE_PACKAGE.md) | 6-middleware stack: ModelCallLimit, ModelRetry, ModelFallback, ToolRetry, HITL, Summarization |
+| [docs/TOOLS_PACKAGE.md](docs/TOOLS_PACKAGE.md) | Filesystem tools, terminal tools, HITL integration |

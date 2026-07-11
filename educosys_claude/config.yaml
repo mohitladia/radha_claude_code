@@ -33,7 +33,7 @@ skills:
   skills_dir: .radha/skills
 
 logging:
-  level: DEBUG
+  root_level: DEBUG
   file_path: .radha/logs/agent.log
   max_bytes: 10485760
   backup_count: 5

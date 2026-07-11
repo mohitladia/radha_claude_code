@@ -20,9 +20,10 @@ def setup_logging() -> None:
     Initialize logging based on config.yaml settings.
 
     Called once at application startup (in main.py).
+    Root logger at DEBUG, console at INFO, file at DEBUG, our modules at DEBUG, third-party at WARNING.
     """
     log_cfg = config.get("logging", {})
-    level = getattr(logging, log_cfg.get("level", "DEBUG").upper(), logging.DEBUG)
+    root_level = getattr(logging, log_cfg.get("root_level", "DEBUG").upper(), logging.DEBUG)
     file_path = log_cfg.get("file_path", ".radha/logs/agent.log")
     max_bytes = log_cfg.get("max_bytes", 10_485_760)
     backup_count = log_cfg.get("backup_count", 5)
@@ -35,32 +36,32 @@ def setup_logging() -> None:
     # Create formatters
     formatter = logging.Formatter(fmt)
 
-    # Root logger configuration
+    # Root logger configuration - DEBUG captures everything
     root_logger = logging.getLogger()
-    root_logger.setLevel(level)
+    root_logger.setLevel(root_level)
 
     # Clear existing handlers (avoid duplicates on reload)
     root_logger.handlers.clear()
 
-    # Console handler
+    # Console handler - INFO by default, less noisy
     if console_enabled:
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(level)
+        console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(formatter)
         root_logger.addHandler(console_handler)
 
-    # Rotating file handler
+    # Rotating file handler - DEBUG captures our module debug + info, WARNING for noisy libs
     file_handler = logging.handlers.RotatingFileHandler(
         file_path,
         maxBytes=max_bytes,
         backupCount=backup_count,
         encoding="utf-8",
     )
-    file_handler.setLevel(level)
+    file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
 
-    # Suppress noisy third-party libraries
+    # Suppress noisy third-party libraries to WARNING or higher
     for noisy in [
         "openai",
         "httpx",
@@ -72,18 +73,28 @@ def setup_logging() -> None:
         "langgraph",
         "langchain_core",
         "langchain_openai",
+        "langsmith",
+        "aiosqlite",
+        "mcp",
+        "asyncio",
     ]:
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:
     """
-    Get a logger for a specific module.
+    Get a logger for our modules that defaults to DEBUG level.
 
-    Our loggers run at DEBUG level (set by root logger).
-    Third-party libraries are suppressed to WARNING.
+    Usage:
+        logger = get_logger(__name__)
+        logger.debug("debug detail")
+        logger.info("info message")
     """
-    return logging.getLogger(name)
+    logger = logging.getLogger(name)
+    # Our modules log at DEBUG; handlers filter to INFO
+    if name.startswith("educosys_claude."):
+        logger.setLevel(logging.DEBUG)
+    return logger
 
 
 # Initialize on import

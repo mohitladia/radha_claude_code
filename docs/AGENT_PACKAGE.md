@@ -105,25 +105,11 @@ if GITHUB_ACTIONS == "true" and HITL_GITHUB_AVAILABLE:
 | **GitHub Gist** | Private gist stores approval state; polls for updates | Fork PRs, minimal permissions |
 
 **Key Classes**:
-- `ApprovalRequest` — dataclass for pending approval (thread_id, tool_name, tool_args, allowed_decisions, etc.)
+- `ApprovalRequest` — dataclass for pending approval
 - `GitHubApprovalStore` — persistence layer (Issue Comments or Gist backend)
 - `GitHubActionsHITL` — main handler: interrupt → post to GitHub → poll → resume
 
-**Usage in Workflow**:
-```yaml
-jobs:
-  agent:
-    runs-on: ubuntu-latest
-    permissions:
-      issues: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run agent with HITL
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: python -m educosys_claude.agent.hitl_github_actions
-```
+**Documentation**: See [HITL_GITHUB_ACTIONS.md](HITL_GITHUB_ACTIONS.md) for complete workflow setup, configuration, and troubleshooting.
 
 ### 5. Usage in `main.py`
 ```python
