@@ -75,3 +75,17 @@ middleware:
     tools: []             # Empty = all tools; or specify tool names ["run_command", "search_codebase"]
     retry_on: []          # Empty = all exceptions; specify types like "TimeoutError,ConnectionError"
     on_failure: "continue"
+
+  # PII Detection & Redaction
+  pii:
+    enabled: true
+    action: "redact"              # redact | block | log_only
+    scope: ["model_input", "model_output", "tool_input", "tool_output"]
+    custom_patterns: []           # List of {name, regex, action, description}
+
+  # Content Filter - Blocks prohibited content
+  content_filter:
+    enabled: true
+    action: "block"               # block | log_only
+    scope: ["model_input", "model_output", "tool_input", "tool_output"]
+    custom_rules: []              # List of {name, regex, action, description, severity}

@@ -8,6 +8,12 @@ from langchain.agents.middleware import (
     SummarizationMiddleware,
 )
 
+from educosys_claude.agent.guardrails import (
+    PIIMiddleware,
+    ContentFilterMiddleware,
+    create_pii_middleware_from_config,
+    create_content_filter_middleware_from_config,
+)
 from educosys_claude.agent.tools import search_codebase
 from educosys_claude.config import config
 from educosys_claude.llm.factory import get_llm
@@ -215,11 +221,21 @@ async def build_agent(checkpointer):
         )
         logger.info(f"ToolRetryMiddleware enabled: max_retries={mw_cfg.get('max_retries')}, tools={tool_names or 'all'}")
 
-    # 5. Human-in-the-Loop - Pauses for approval on dangerous tools
+    # 5. PII Detection & Redaction - Scans inputs/outputs for sensitive data
+    pii_middleware = create_pii_middleware_from_config()
+    if pii_middleware:
+        middleware.append(pii_middleware)
+
+    # 6. Content Filter - Blocks prohibited content (violence, illegal acts, etc.)
+    content_filter_middleware = create_content_filter_middleware_from_config()
+    if content_filter_middleware:
+        middleware.append(content_filter_middleware)
+
+    # 7. Human-in-the-Loop - Pauses for approval on dangerous tools
     hitl_middleware = HumanInTheLoopMiddleware(interrupt_on=interrupt_on)
     middleware.append(hitl_middleware)
 
-    # 6. Summarization - Compresses history when token threshold exceeded (outermost)
+    # 8. Summarization - Compresses history when token threshold exceeded (outermost)
     summarization_middleware = get_summarization_middleware()
     middleware.append(summarization_middleware)
 

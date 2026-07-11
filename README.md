@@ -210,6 +210,30 @@ memory:
   - `vector`: Pure vector similarity search
   - `keyword`: Traditional text‑based search
 
+## 🛡️ Guardrails Middleware
+
+The agent includes built-in safety middleware configurable via `config.yaml`:
+
+### PII Detection & Redaction (`PIIMiddleware`)
+Detects and handles sensitive data in model inputs/outputs and tool calls:
+- **Default patterns**: Email, US phone, SSN, credit cards, API keys (OpenAI, Anthropic, generic), AWS keys, GitHub tokens, IP addresses, JWT tokens
+- **Actions**: `redact` (replace with `[REDACTED:TYPE]`), `block` (raise error), `log_only` (warn only)
+- **Scope**: Apply to model input, model output, tool input, tool output independently
+
+### Content Filter (`ContentFilterMiddleware`)
+Blocks or flags prohibited content:
+- **Default rules**: Violence, self-harm, illegal acts, PII requests, hate speech (log only), sexual content
+- **Severity levels**: low, medium, high, critical — threshold controls enforcement
+- **Actions**: `block` (raise error), `log_only` (warn only)
+
+### Middleware Stack Order
+The guardrails run in this order (inner to outer):
+1. ModelCallLimit → 2. ModelRetry → 3. ModelFallback → 4. ToolRetry → **5. PIIMiddleware → 6. ContentFilterMiddleware** → 7. HITL → 8. Summarization
+
+**Why this order?** PII redaction runs before content filter (prevents false positives from sensitive data), both run before HITL (clean data for human review), after retries (only process successful requests).
+
+See [docs/GUARDRAILS_PACKAGE.md](docs/GUARDRAILS_PACKAGE.md) for full configuration and custom pattern examples.
+
 ## 🧪 Testing
 
 ### Unit Tests
@@ -371,3 +395,4 @@ run()
 | [docs/MEMORY_PACKAGE.md](docs/MEMORY_PACKAGE.md) | Short-term (checkpointer, summarization) & Long-term (fact extraction) memory |
 | [docs/MIDDLEWARE_PACKAGE.md](docs/MIDDLEWARE_PACKAGE.md) | 6-middleware stack: ModelCallLimit, ModelRetry, ModelFallback, ToolRetry, HITL, Summarization |
 | [docs/TOOLS_PACKAGE.md](docs/TOOLS_PACKAGE.md) | Filesystem tools, terminal tools, HITL integration |
+| [docs/GUARDRAILS_PACKAGE.md](docs/GUARDRAILS_PACKAGE.md) | PII detection/redaction and content filtering middleware |

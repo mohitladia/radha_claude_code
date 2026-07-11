@@ -17,7 +17,7 @@ educosys_claude/agent/
 
 ### 1. Factory (`factory.py`)
 
-**Purpose**: Creates and configures the LangChain agent with tools, memory, and system prompt.
+**Purpose**: Creates and configures the LangChain agent with tools, memory, system prompt, and middleware stack.
 
 **Key Functions**:
 - `build_agent(checkpointer)`: Creates a LangChain agent with:
@@ -32,11 +32,30 @@ educosys_claude/agent/
     - Reference specific file names, function names, and line numbers
     - Admit when answers aren't found in the codebase
   - Persistent checkpointer for session memory
-  - **Human-in-the-Loop (HITL) Middleware**: Pauses execution for dangerous tools awaiting approval
+  - **Middleware Stack** (8 layers, order matters — inner wraps outer):
 
-**Human-in-the-Loop Middleware**:
+**Middleware Stack (inner → outer):**
 ```python
-# Configured in factory.py - tools requiring approval
+middleware = [
+    ModelCallLimitMiddleware(),      # 1. Budget control — max calls per thread/run
+    ModelRetryMiddleware(),          # 2. Retry failed model calls with backoff
+    ModelFallbackMiddleware(),       # 3. Fallback to alt models on failure
+    ToolRetryMiddleware(),           # 4. Retry failed tool calls
+    PIIMiddleware(),                 # 5. Detect/redact PII (email, SSN, API keys, tokens)
+    ContentFilterMiddleware(),       # 6. Block prohibited content (violence, illegal, self-harm)
+    HumanInTheLoopMiddleware(),      # 7. Pause for approval on dangerous tools
+    SummarizationMiddleware(),       # 8. Compress history when token threshold exceeded (outermost)
+]
+```
+
+**Why this order?**
+1. **PII before Content Filter** — Redact sensitive data first so it doesn't trigger false positives in content filtering
+2. **Both before HITL** — Clean data before human approval decision
+3. **After retries** — Only process successful requests (retries handled first)
+4. **Summarization outermost** — Wraps entire conversation; sees compressed history
+
+**HITL Configuration** (tools requiring approval):
+```python
 interrupt_on = {
     "run_command": {"allowed_decisions": ["approve", "edit", "reject"]},
     "run_in_directory": {"allowed_decisions": ["approve", "edit", "reject"]},
@@ -44,12 +63,6 @@ interrupt_on = {
     "append_file": {"allowed_decisions": ["approve", "edit", "reject"]},
     # All GitHub MCP tools (create_pull_request, push_files, etc.)
 }
-
-# Middleware stack (ORDER MATTERS):
-middleware = [
-    PatchToolCallsMiddleware(),      # Repairs orphaned tool_calls after HITL resume
-    HumanInTheLoopMiddleware(interrupt_on=interrupt_on),
-]
 ```
 
 **System Prompt**:
