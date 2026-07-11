@@ -62,6 +62,29 @@ educosys_claude/tools/
 - Returns formatted string with clear separation of output streams
 - Handles timeout and exception cases gracefully
 
+## 🝱 Integration with Human-in-the-Loop (HITL)
+
+**Critical**: The following tools are **DANGEROUS** and require human approval before execution via the HITL middleware in `agent/factory.py`:
+
+| Tool | Category | Risk |
+|------|----------|------|
+| `run_command` | Terminal | Arbitrary shell command execution |
+| `run_in_directory` | Terminal | Arbitrary command in specific dir |
+| `write_file` | Filesystem | Creates/overwrites files |
+| `append_file` | Filesystem | Modifies existing files |
+| `delete_file` | Filesystem | Permanently removes files |
+
+**How it works**:
+1. Agent calls a dangerous tool (e.g., `run_command('git push')`)
+2. `HumanInTheLoopMiddleware` intercepts → **pauses graph execution**
+3. **Local terminal**: `rich.Prompt` asks `Approve / Edit / Reject?`
+4. **GitHub Actions**: Bot posts comment to Issue/Gist → polls for `/APPROVE`, `/REJECT`, `/EDIT`
+5. On decision: `Command(resume={"decisions": [...]})` resumes agent
+6. `PatchToolCallsMiddleware` cleans orphaned `tool_calls` from history
+7. Tool actually executes
+
+See `agent/hitl_github_actions.py` for GitHub Actions workflow integration.
+
 ## 🔧 How It Works Together
 
 ### Tool Usage Flow

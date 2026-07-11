@@ -60,12 +60,23 @@ BLOCK_NODE_TYPES = {
 
 @dataclass
 class ParsedChunk:
-  name: str
-  type: str        # "function" | "class" | "block"
-  content: str
-  source: str      # absolute path to the file
-  start_line: int
-  end_line: int
+    """
+    Represents a single parsed code block (function, class, or text chunk).
+
+    Attributes:
+        name: Identifier (function/class name) or "chunk_N" for text files
+        type: "function" | "class" | "block"
+        content: Source code text of this chunk
+        source: Absolute file path this chunk came from
+        start_line: 1-based line number where chunk starts
+        end_line: 1-based line number where chunk ends
+    """
+    name: str
+    type: str        # "function" | "class" | "block"
+    content: str
+    source: str      # absolute path to the file
+    start_line: int
+    end_line: int
 
 
 def parse_file(filepath: str) -> list[ParsedChunk]:
