@@ -1,6 +1,11 @@
+tasks:
+ db_path: .radha/tasks.db
+
+
 llm:
   provider: openai
   model: gpt-4o
+  judge_model: gpt-4o-mini 
 
 embeddings:
   provider: openai
