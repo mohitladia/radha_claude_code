@@ -172,7 +172,7 @@ def present_plan_for_approval(plan: ExecutionPlan) -> ExecutionPlan | None:
     """
 ```
 
-**Table columns:** ID, Type, Title, Depends on, Output files  
+**Table columns:** ID, Type, Title, Depends on, Output files
 **Also shows:** project name, goal summary, tech stack, estimated hours, risks.
 
 ---
@@ -488,7 +488,7 @@ sequenceDiagram
     loop Approval Loop
         Main->>Approval: present_plan_for_approval(plan)
         Approval->>User: Render Rich table
-        User->>Approval: [A]pprove / [M]odify / [R]eject
+        User->>Approval: Approve / Modify / Reject
         alt Approve
             Approval-->>Main: plan (approved)
         else Modify
@@ -503,13 +503,13 @@ sequenceDiagram
     end
 
     Main->>Store: create_project(goal, plan)
-    Store->>Store: INSERT project + tasks (JSON deps/output_files)
+    Store->>Store: INSERT project + tasks
     Store-->>Main: project_id (UUID)
 
     Main->>Recovery: recover(project_id)
     Recovery->>Store: SELECT IN_PROGRESS tasks
     alt Has crashed tasks
-        Recovery->>Store: UPDATE → PENDING (retry) or FAILED
+        Recovery->>Store: UPDATE to PENDING or FAILED
         Recovery-->>Main: recovered_count
     end
 
@@ -517,46 +517,44 @@ sequenceDiagram
 
     loop Orchestrator Main Loop
         Orchestrator->>Store: get_progress(project_id)
-        Store-->>Orchestrator: {completed: 3, in_progress: 0, pending: 4, ...}
-        
-        alt All done (pending=0, in_progress=0)
+        Store-->>Orchestrator: progress counts by status
+
+        alt All done, pending is 0 and in_progress is 0
             Orchestrator->>User: Print final summary
-            break
-        end
+        else Work remains
+            Orchestrator->>Store: get_ready_tasks(project_id)
+            Store->>Store: SELECT PENDING and check deps done
+            Store-->>Orchestrator: list of ready task ids
 
-        Orchestrator->>Store: get_ready_tasks(project_id)
-        Store->>Store: SELECT PENDING + check _all_deps_done()
-        Store-->>Orchestrator: [task_004, task_005, ...]
+            loop Dispatch Batch, up to max_concurrent
+                Orchestrator->>Store: claim_task(task_id)
+                Store-->>Orchestrator: true if claimed
 
-        loop Dispatch Batch (max_concurrent)
-            Orchestrator->>Store: claim_task(task_id)
-            Store-->>Orchestrator: True (claimed)
-            
-            Orchestrator->>Executor: run_subtask_agent(task, dep_outputs)
-            
-            Executor->>Executor: Build agent (LLM + tools + system_prompt)
-            Executor->>Executor: Stream steps, log tool calls
-            
-            Executor->>Judge: _judge_task(task, output)
-            Judge-->>Executor: _JudgeVerdict(score, passed, reason)
-            
-            alt Judge passed (score >= 6)
-                Executor-->>Orchestrator: output string
-                Orchestrator->>Store: complete_task(task_id, result)
-            else Judge failed
-                Executor-->>Orchestrator: ValueError
-                Orchestrator->>Store: fail_task(task_id, error)
-                Note right of Store: Auto-retry via SQL CASE
+                Orchestrator->>Executor: run_subtask_agent(task, dep_outputs)
+                Executor->>Executor: Build agent with LLM, tools, system prompt
+                Executor->>Executor: Stream steps, log tool calls
+
+                Executor->>Judge: judge_task(task, output)
+                Judge-->>Executor: JudgeVerdict with score, passed, reason
+
+                alt Judge passed, score >= 6
+                    Executor-->>Orchestrator: output string
+                    Orchestrator->>Store: complete_task(task_id, result)
+                else Judge failed
+                    Executor-->>Orchestrator: ValueError raised
+                    Orchestrator->>Store: fail_task(task_id, error)
+                    Note right of Store: Auto-retry via SQL CASE
+                end
             end
+
+            Orchestrator->>Orchestrator: sleep 5 seconds if none ready but tasks in progress
         end
-        
-        Orchestrator->>Orchestrator: await asyncio.sleep(5) if waiting
     end
 
     Orchestrator->>Indexer: get_indexer()(cwd)
     Indexer->>Indexer: Re-index generated files
     Indexer-->>Orchestrator: Done
-    Orchestrator->>User: "Index updated — use /ask to query"
+    Orchestrator->>User: Index updated, use /ask to query
 ```
 
 ---
