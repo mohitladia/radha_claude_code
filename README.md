@@ -305,7 +305,6 @@ sequenceDiagram
                 else Judge failed
                     Executor-->>Orchestrator: ValueError raised
                     Orchestrator->>Store: fail_task(task_id, error)
-                    Note right of Store: Auto-retry via SQL CASE
                 end
             end
 
@@ -316,7 +315,7 @@ sequenceDiagram
     Orchestrator->>Indexer: get_indexer()(cwd)
     Indexer->>Indexer: Re-index generated files
     Indexer-->>Orchestrator: Done
-    Orchestrator->>User: Index updated, use /ask to query
+    Orchestrator->>User: Index updated, ready for queries
 ```
 
 ### `/task_status` — View Task Progress
