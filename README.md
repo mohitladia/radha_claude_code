@@ -215,7 +215,7 @@ sequenceDiagram
     end
 
     REPL->>Store: create_project(goal, plan)
-    Store->>Store: INSERT project + tasks (JSON deps/output_files)
+    Store->>Store: INSERT project + tasks
     Store-->>REPL: project_id (UUID)
 
     REPL->>Recovery: recover(project_id)
@@ -230,33 +230,34 @@ sequenceDiagram
     loop Orchestrator Main Loop
         Orchestrator->>Store: get_progress(project_id)
         Store-->>Orchestrator: progress counts by status
-        alt All done (pending=0, in_progress=0)
+
+        alt All done, pending is 0 and in_progress is 0
             Orchestrator->>User: Print final summary
-            break
-        end
+        else Work remains
+            Orchestrator->>Store: get_ready_tasks(project_id)
+            Store->>Store: SELECT PENDING and check deps done
+            Store-->>Orchestrator: list of ready task ids
 
-        Orchestrator->>Store: get_ready_tasks(project_id)
-        Store->>Store: SELECT PENDING + check _all_deps_done()
-        Store-->>Orchestrator: list of ready task ids
-
-        loop Dispatch Batch (max_concurrent)
-            Orchestrator->>Store: claim_task(task_id)
-            Store-->>Orchestrator: true if claimed
-            Orchestrator->>Executor: run_subtask_agent(task, dep_outputs)
-            Executor->>Executor: Build agent (LLM + tools + system_prompt)
-            Executor->>Executor: Stream steps, log tool calls
-            Executor->>Judge: _judge_task(task, output)
-            Judge-->>Executor: JudgeVerdict(score, passed, reason)
-            alt Judge passed (score >= 6)
-                Executor-->>Orchestrator: output string
-                Orchestrator->>Store: complete_task(task_id, result)
-            else Judge failed
-                Executor-->>Orchestrator: ValueError
-                Orchestrator->>Store: fail_task(task_id, error)
-                Note right of Store: Auto-retry via SQL CASE
+            loop Dispatch Batch, up to max_concurrent
+                Orchestrator->>Store: claim_task(task_id)
+                Store-->>Orchestrator: true if claimed
+                Orchestrator->>Executor: run_subtask_agent(task, dep_outputs)
+                Executor->>Executor: Build agent with LLM, tools, system prompt
+                Executor->>Executor: Stream steps, log tool calls
+                Executor->>Judge: judge_task(task, output)
+                Judge-->>Executor: JudgeVerdict with score, passed, reason
+                alt Judge passed
+                    Executor-->>Orchestrator: output string
+                    Orchestrator->>Store: complete_task(task_id, result)
+                else Judge failed
+                    Executor-->>Orchestrator: ValueError raised
+                    Orchestrator->>Store: fail_task(task_id, error)
+                    Note right of Store: Auto-retry via SQL CASE
+                end
             end
+
+            Orchestrator->>Orchestrator: sleep 5 seconds if waiting
         end
-        Orchestrator->>Orchestrator: sleep 5s if waiting
     end
 
     Orchestrator->>Indexer: get_indexer()(cwd)
@@ -566,7 +567,7 @@ A: Session data lives in the SQLite database at `.memory/memory.db` by default (
 A: Delete the persistence directory (e.g., `.chromadb`, `.qdrant`, or the Elasticsearch index) and restart the assistant; it will re‑index on first query.
 
 **Q: Does the tool support Windows?**  
-A: Yes – all dependencies are cross‑platform. Ensure Poetry and a compatible Python 3.12+ are installed.
+A: Yes – all dependencies are cross‑platform. Ensure Poetry and a compatible Python 3.12+ are installed.
 
 **Q: How can I contribute a new retrieval mode?**  
 A: Implement a new retriever in `educosys_claude/context/retrievers/` and register it in `educosys_claude/context/retrievers/factory.py`. Update the `rag.mode` allowed values in the config schema.
