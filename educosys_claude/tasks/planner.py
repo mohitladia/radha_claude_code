@@ -14,32 +14,45 @@ from educosys_claude.observability.logger import get_logger
 logger = get_logger(__name__)
 
 
-
+# ──────────────────────────────────────────────────────────────────────
+# Pydantic models — planner output schema (validated by LLM structured output)
+# ──────────────────────────────────────────────────────────────────────
 
 class PlannedTask(BaseModel):
-   id: str                          # stable snake_case e.g. task_001
-   title: str
-   description: str
-   task_type: TaskType
-   depends_on: list[str]            # list of task IDs that must complete first
-   estimated_minutes: int
-   output_files: list[str]          # files this task will create/modify
-   acceptance_criteria: list[str]   # what "done" looks like for the judge
+    """
+    Single task in an execution plan.
 
-
+    All fields are required for the planner LLM to produce a complete,
+    executable plan. The orchestrator and executor rely on every field.
+    """
+    id: str                          # stable snake_case: task_001, task_002, ...
+    title: str
+    description: str
+    task_type: TaskType
+    depends_on: list[str]            # task IDs that must complete first (DAG edges)
+    estimated_minutes: int           # rough effort estimate for planning/scheduling
+    output_files: list[str]          # files this task will CREATE (not just modify)
+    acceptance_criteria: list[str]   # 3-5 concrete, verifiable "done" checks
 
 
 class ExecutionPlan(BaseModel):
-   project_name: str
-   goal_summary: str
-   tech_stack: list[str]
-   total_estimated_hours: float
-   tasks: list[PlannedTask]
-   risks: list[str]
-   assumptions: list[str]
+    """
+    Complete execution plan for a software goal.
+
+    Produced by the LLM planner, reviewed by human, then persisted to SQLite.
+    """
+    project_name: str
+    goal_summary: str
+    tech_stack: list[str]
+    total_estimated_hours: float
+    tasks: list[PlannedTask]
+    risks: list[str]
+    assumptions: list[str]
 
 
-
+# ──────────────────────────────────────────────────────────────────────
+# Planner system prompt — instructs LLM to produce a valid ExecutionPlan
+# ──────────────────────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = """\
 You are a senior software architect. Given a software goal, produce a detailed
@@ -57,31 +70,41 @@ Rules:
 """
 
 
-
-
 def create_plan(goal: str, extra_context: str = "") -> ExecutionPlan:
-   """Call the LLM planner and return a structured ExecutionPlan."""
-   provider = config["llm"]["provider"]
-   model    = config["llm"]["model"]
+    """
+    Call the LLM planner and return a validated ExecutionPlan.
 
+    Uses structured output (Pydantic model) so the LLM must return valid JSON
+    matching the schema. Temperature=0 for deterministic planning.
 
-   llm = init_chat_model(f"{provider}:{model}", temperature=0)
+    Args:
+        goal: High-level software goal from user (e.g., "build a REST API for todos")
+        extra_context: Optional feedback from human approval loop for re-planning
 
+    Returns:
+        ExecutionPlan with 5-20 tasks, validated by Pydantic
+    """
+    provider = config["llm"]["provider"]
+    model    = config["llm"]["model"]
 
-   planner_agent = create_agent(
-       llm,
-       tools=[],
-       system_prompt=_SYSTEM_PROMPT,
-       response_format=ExecutionPlan,
-   )
+    # Initialize LLM with provider:model syntax (e.g., "anthropic:claude-3-5-sonnet")
+    llm = init_chat_model(f"{provider}:{model}", temperature=0)
 
+    # Create a structured-output agent — forces LLM to return ExecutionPlan JSON
+    planner_agent = create_agent(
+        llm,
+        tools=[],                          # planner has no tools; pure reasoning
+        system_prompt=_SYSTEM_PROMPT,
+        response_format=ExecutionPlan,     # Pydantic model for structured output
+    )
 
-   user_message = f"Goal: {goal}"
-   if extra_context:
-       user_message += f"\n\nAdditional context / change requests:\n{extra_context}"
+    user_message = f"Goal: {goal}"
+    if extra_context:
+        user_message += f"\n\nAdditional context / change requests:\n{extra_context}"
 
+    # Invoke planner agent — returns dict with "structured_response" key
+    result = planner_agent.invoke({"messages": [{"role": "user", "content": user_message}]})
+    plan: ExecutionPlan = result["structured_response"]
 
-   result = planner_agent.invoke({"messages": [{"role": "user", "content": user_message}]})
-   plan: ExecutionPlan = result["structured_response"]
-   logger.info(f"Plan created: {plan.project_name} with {len(plan.tasks)} tasks")
-   return plan
+    logger.info(f"Plan created: {plan.project_name} with {len(plan.tasks)} tasks")
+    return plan
