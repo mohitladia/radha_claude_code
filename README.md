@@ -143,6 +143,231 @@ Below is a short animated demo of a typical `/ask` interaction:
 
 *(If the image does not appear, the raw recording can be viewed at https://asciinema.org/a/xxxxxx)*
 
+---
+
+## 🔄 Sequence Diagrams
+
+### `/ask <question>` — Query the Codebase
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant REPL as main.py REPL
+    participant Agent as LangGraph Agent
+    participant Retriever as Retriever (Hybrid/Vector/Keyword)
+    participant VectorStore as Vector Store (Qdrant/Chroma/ES)
+    participant LLM as LLM (OpenAI/Anthropic)
+    participant Memory as SQLite Checkpointer
+
+    User->>REPL: /ask "How does auth work?"
+    REPL->>Agent: handle_query(agent, question, session_id)
+    Agent->>Memory: Load conversation state for session_id
+    Memory-->>Agent: Previous messages + checkpointer
+    Agent->>LLM: Invoke with system prompt + tools
+    LLM-->>Agent: Tool call: search_codebase(query)
+    Agent->>Retriever: search_codebase(question)
+    Retriever->>VectorStore: Embed query + similarity search
+    VectorStore-->>Retriever: Top-K chunks (file, code, score)
+    Retriever-->>Agent: Ranked results with scores
+    Agent->>LLM: Invoke with retrieved context
+    LLM-->>Agent: Final answer (with citations)
+    Agent->>Memory: Save updated state (checkpointer)
+    Agent-->>REPL: Response string
+    REPL-->>User: Print answer with sources
+```
+
+### `/plan <goal>` — Generate & Execute a Multi-Step Plan
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant REPL as main.py
+    participant Planner as planner.create_plan()
+    participant Approval as approval.present_plan_for_approval()
+    participant Store as SQLiteTaskStore
+    participant Recovery as RecoveryManager
+    participant Orchestrator as TaskOrchestrator
+    participant Executor as executor.run_subtask_agent()
+    participant Judge as LLM Judge
+    participant Indexer as context.indexers.factory.get_indexer()
+
+    User->>REPL: /plan "Build REST API for todos"
+    REPL->>Planner: create_plan(goal, extra_context="")
+    Planner-->>REPL: ExecutionPlan (validated Pydantic)
+
+    loop Approval Loop
+        REPL->>Approval: present_plan_for_approval(plan)
+        Approval->>User: Render Rich table
+        User->>Approval: Approve / Modify / Reject
+        alt Approve
+            Approval-->>REPL: plan (approved)
+        else Modify
+            Approval->>User: Input task_id + new description
+            Approval->>Approval: Update task.description
+            Approval->>User: Re-render
+        else Reject
+            Approval-->>REPL: None
+            User->>REPL: Input feedback
+            REPL->>Planner: Re-plan with feedback
+        end
+    end
+
+    REPL->>Store: create_project(goal, plan)
+    Store->>Store: INSERT project + tasks (JSON deps/output_files)
+    Store-->>REPL: project_id (UUID)
+
+    REPL->>Recovery: recover(project_id)
+    Recovery->>Store: SELECT IN_PROGRESS tasks
+    alt Has crashed tasks
+        Recovery->>Store: UPDATE to PENDING or FAILED
+        Recovery-->>REPL: recovered_count
+    end
+
+    REPL->>Orchestrator: TaskOrchestrator(store).run(project_id)
+
+    loop Orchestrator Main Loop
+        Orchestrator->>Store: get_progress(project_id)
+        Store-->>Orchestrator: progress counts by status
+        alt All done (pending=0, in_progress=0)
+            Orchestrator->>User: Print final summary
+            break
+        end
+
+        Orchestrator->>Store: get_ready_tasks(project_id)
+        Store->>Store: SELECT PENDING + check _all_deps_done()
+        Store-->>Orchestrator: list of ready task ids
+
+        loop Dispatch Batch (max_concurrent)
+            Orchestrator->>Store: claim_task(task_id)
+            Store-->>Orchestrator: true if claimed
+            Orchestrator->>Executor: run_subtask_agent(task, dep_outputs)
+            Executor->>Executor: Build agent (LLM + tools + system_prompt)
+            Executor->>Executor: Stream steps, log tool calls
+            Executor->>Judge: _judge_task(task, output)
+            Judge-->>Executor: JudgeVerdict(score, passed, reason)
+            alt Judge passed (score >= 6)
+                Executor-->>Orchestrator: output string
+                Orchestrator->>Store: complete_task(task_id, result)
+            else Judge failed
+                Executor-->>Orchestrator: ValueError
+                Orchestrator->>Store: fail_task(task_id, error)
+                Note right of Store: Auto-retry via SQL CASE
+            end
+        end
+        Orchestrator->>Orchestrator: sleep 5s if waiting
+    end
+
+    Orchestrator->>Indexer: get_indexer()(cwd)
+    Indexer->>Indexer: Re-index generated files
+    Indexer-->>Orchestrator: Done
+    Orchestrator->>User: Index updated, use /ask to query
+```
+
+### `/task_status` — View Task Progress
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant REPL as main.py
+    participant Store as SQLiteTaskStore
+
+    User->>REPL: /task_status
+    REPL->>Store: get_latest_approved_project()
+    Store-->>REPL: project_id (or None)
+    alt No project
+        REPL-->>User: "No active project. Run /plan <goal> first."
+    else Has project
+        REPL->>Store: get_all_tasks(project_id)
+        REPL->>Store: get_progress(project_id)
+        Store-->>REPL: tasks list + counts by status
+        REPL-->>User: Rich table (ID, Type, Title, Status, Retries, Error)
+    end
+```
+
+### Session Management — `/new_session`, `/switch`, `/session`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant REPL as main.py
+    participant SessionMgr as memory.session
+
+    User->>REPL: /new_session
+    REPL->>SessionMgr: new_session()
+    SessionMgr-->>REPL: new_session_id (UUID)
+    REPL-->>User: "New session started: <id>"
+
+    User->>REPL: /switch abc123
+    REPL->>SessionMgr: switch_session("abc123")
+    SessionMgr-->>REPL: session_id or error
+    alt Success
+        REPL-->>User: "Switched to session: abc123"
+    else Not found
+        REPL-->>User: "Session not found"
+    end
+
+    User->>REPL: /session
+    REPL-->>User: Current session: <id>
+```
+
+### `/show_index` — Inspect Vector Index
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant REPL as main.py
+    participant Inspector as context.indexers.factory.get_index_inspector()
+    participant Indexer as Indexer (Qdrant/Chroma/ES)
+
+    User->>REPL: /show_index
+    REPL->>Inspector: get_index_inspector()(index)
+    Inspector->>Indexer: Count chunks, list collections, show stats
+    Indexer-->>Inspector: Stats (chunk count, embedding dims, collections)
+    Inspector-->>REPL: Formatted output
+    REPL-->>User: Rich table with index statistics
+```
+
+### HITL (Human-in-the-Loop) — Dangerous Tool Approval
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant REPL as main.py
+    participant Agent as LangGraph Agent
+    participant HITL as HITL Middleware
+    participant GitHub as GitHub Actions (optional)
+
+    User->>REPL: /ask "Run tests and deploy"
+    REPL->>Agent: handle_query(...)
+    Agent->>LLM: Plan + invoke tool: run_command("npm test")
+    LLM-->>Agent: ToolCall(run_command)
+    Agent->>HITL: Intercept tool call (run_command is dangerous)
+    HITL->>User: "Approve run_command? (A/R/E)"
+    alt Local REPL
+        User->>HITL: A / R / E
+    else GitHub Actions
+        HITL->>GitHub: Post comment on issue/PR
+        GitHub-->>HITL: Wait for /APPROVE /REJECT /EDIT
+        User->>GitHub: Reply /APPROVE
+        GitHub-->>HITL: Approval received
+    end
+    alt Approved
+        HITL->>Agent: Execute tool
+        Agent->>LLM: Continue with tool result
+    else Rejected
+        HITL->>Agent: Return error to LLM
+        Agent->>LLM: LLM replans / explains
+    end
+```
+
+---
+
 ## ⚙️ Configuration
 
 All configuration is managed through `educosys_claude/config.yaml`:
