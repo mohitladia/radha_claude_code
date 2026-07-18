@@ -154,27 +154,80 @@ sequenceDiagram
     autonumber
     actor User
     participant REPL as main.py REPL
-    participant Agent as LangGraph Agent
-    participant Retriever as Retriever (Hybrid/Vector/Keyword)
-    participant VectorStore as Vector Store (Qdrant/Chroma/ES)
+    participant SessionMgr as Memory Session Manager
+    participant Store as SQLite Checkpointer (.memory/memory.db)
+    participant Agent as LangGraph Agent (agent.executor)
+    participant MWStack as Middleware Stack
+    participant MW1 as ModelCallLimit (max calls)
+    participant MW2 as ModelRetry (exponential backoff)
+    participant MW3 as ModelFallback (provider failover)
+    participant MW4 as ToolRetry (max 2 retries)
+    participant MW5 as PII Detection (Presidio)
+    participant MW6 as ContentFilter (violence/pii/self-harm)
+    participant MW7 as HITL (dangerous tool approval)
+    participant MW8 as Summarization (at token threshold)
     participant LLM as LLM (OpenAI/Anthropic)
-    participant Memory as SQLite Checkpointer
+    participant Retriever as Retriever Factory (hybrid/vector/keyword)
+    participant R1 as Vector Retriever (Qdrant/Chroma/ES)
+    participant R2 as Keyword Retriever (BM25)
+    participant R3 as Hybrid Fusion (RRF)
+    participant VectorStore as Vector Store
 
     User->>REPL: /ask "How does auth work?"
-    REPL->>Agent: handle_query(agent, question, session_id)
-    Agent->>Memory: Load conversation state for session_id
-    Memory-->>Agent: Previous messages + checkpointer
-    Agent->>LLM: Invoke with system prompt + tools
-    LLM-->>Agent: Tool call: search_codebase(query)
-    Agent->>Retriever: search_codebase(question)
-    Retriever->>VectorStore: Embed query + similarity search
-    VectorStore-->>Retriever: Top-K chunks (file, code, score)
-    Retriever-->>Agent: Ranked results with scores
-    Agent->>LLM: Invoke with retrieved context
-    LLM-->>Agent: Final answer (with citations)
-    Agent->>Memory: Save updated state (checkpointer)
-    Agent-->>REPL: Response string
-    REPL-->>User: Print answer with sources
+    REPL->>SessionMgr: get_or_create_session(session_id)
+    SessionMgr-->>REPL: session_id (UUID)
+    REPL->>Store: Load checkpointer state for session_id
+    Store-->>REPL: ConversationState (messages, summary, tokens)
+    REPL->>Agent: handle_query(agent, question, session_id, config)
+
+    Note over Agent: LangGraph graph: START -> agent_node -> tools_node -> agent_node -> END
+    Agent->>MWStack: Invoke with state + config
+    MWStack->>MW1: Check call count < MAX_CALLS (default 25)
+    MW1-->>MWStack: OK / raise ModelCallLimitExceeded
+    MWStack->>MW2: Retry on transient LLM errors (429, 5xx, timeout)
+    MW2-->>MWStack: Retry with backoff (max 3) / propagate error
+    MWStack->>MW3: Fallback provider on persistent failure (OpenAI->Anthropic)
+    MW3-->>MWStack: Switched provider / exhausted fallbacks
+    MWStack->>MW5: Scan user input + tool args for PII (email, SSN, keys)
+    MW5-->>MWStack: Redacted text + findings / error if strict
+    MWStack->>MW6: Classify content (violence, self-harm, sexual, PII)
+    MW6-->>MWStack: Safe / flagged / blocked
+    MWStack->>LLM: Invoke with system_prompt + tools + messages
+    LLM-->>MWStack: AIMessage (content or ToolCall)
+    
+    alt Tool call requested
+        MWStack->>MW4: Retry tool on failure (max 2, exponential backoff)
+        MW4->>MW7: Is tool dangerous? (run_command, write_file outside workspace)
+        alt Dangerous tool
+            MW7->>User: "Approve run_command? (A/R/E)" (via HITL middleware)
+            User->>MW7: A / R / E
+            alt Approve
+                MW7-->>MW4: Proceed
+            else Reject/Edit
+                MW7-->>MW4: Return error to LLM / modified args
+            end
+        else Safe tool
+            MW7-->>MW4: Auto-approve
+        end
+        MW4->>Agent: Execute tool (search_codebase, read_file, list_dir, run_command)
+        Agent-->>MW4: ToolResult
+        MW4-->>MWStack: ToolMessage
+        MWStack->>LLM: Invoke with tool result
+        LLM-->>MWStack: AIMessage (final answer)
+    end
+
+    MWStack->>MW8: Check token count > SUMMARIZE_AT (default 4000)
+    alt Exceeds threshold
+        MW8->>LLM: Summarize older messages (keep last 20)
+        LLM-->>MW8: Summary
+        MW8->>Store: Replace old messages with summary
+    end
+
+    MWStack-->>Agent: Final AgentState
+    Agent->>Store: Save checkpointer (updated messages, summary, tokens)
+    Store-->>Agent: OK
+    Agent-->>REPL: Response string with citations
+    REPL-->>User: Print answer + Rich table of sources
 ```
 
 ### `/plan <goal>` — Generate & Execute a Multi-Step Plan
