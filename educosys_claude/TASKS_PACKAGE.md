@@ -280,10 +280,11 @@ _DEFAULT_TOOLS = [read_file, write_file, list_directory]
 def _build_system_prompt(task: dict, dep_outputs: list[dict]) -> str:
     """
     Injects:
-    - Task ID, type, title, description
+    - Task metadata (id, type, title, description)
     - Output files (bulleted)
     - Acceptance criteria (bulleted)
-    - PRIOR TASK OUTPUTS (from dependencies) — gives agent memory without shared checkpointer
+    - PRIOR TASK OUTPUTS — results from completed deps, giving agent memory
+      without needing a shared checkpointer.
     """
 ```
 
@@ -309,12 +310,15 @@ async def _judge_task(task: dict, agent_output: str) -> _JudgeVerdict:
 ```python
 async def run_subtask_agent(task: dict, dep_outputs: list[dict] | None = None) -> str:
     """
-    1. Build task-specific agent (LLM + tools + system prompt)
-    2. Invoke with user message (task description + "directory may be empty")
-    3. Stream steps, log tool calls
-    4. Extract final AIMessage content
-    5. Run LLM judge → if fails, raise ValueError → orchestrator retries
-    6. Return agent output string
+    1. Select toolset based on task_type (least privilege)
+    2. Build system prompt with task details + dependency outputs
+    3. Create LangChain agent with structured prompt
+    4. Invoke with user message (task description + "directory may be empty" hint)
+    5. Stream steps, logging tool calls for observability
+    6. Extract final AIMessage content (handles reasoning models with empty final message)
+    7. Run LLM judge against acceptance criteria
+    8. If judge rejects (score < 6), raise ValueError → orchestrator retries
+    9. Return agent output string on success
     """
 ```
 
@@ -530,15 +534,13 @@ sequenceDiagram
             
             Orchestrator->>Executor: run_subtask_agent(task, dep_outputs)
             
-            par Agent Execution
-                Executor->>Executor: Build agent (LLM + tools + system_prompt)
-                Executor->>Executor: Stream steps, log tool calls
-            end
+            Executor->>Executor: Build agent (LLM + tools + system_prompt)
+            Executor->>Executor: Stream steps, log tool calls
             
             Executor->>Judge: _judge_task(task, output)
             Judge-->>Executor: _JudgeVerdict(score, passed, reason)
             
-            alt Judge passed (score ≥ 6)
+            alt Judge passed (score >= 6)
                 Executor-->>Orchestrator: output string
                 Orchestrator->>Store: complete_task(task_id, result)
             else Judge failed
@@ -634,8 +636,8 @@ sqlite3 .educosys/tasks.db "SELECT * FROM tasks;"
 |----------|----------|
 | Agent returns empty output | `ValueError("Agent returned empty output")` → retry |
 | Judge score < 6 | `ValueError("Judge rejected...")` → retry (up to `max_retries`) |
-| Tool call fails (file write, command) | LangChain surfaces as exception → caught in `_execute` → `fail_task` |
-| Dependency failed | `get_ready_tasks` excludes (dep not COMPLETED/SKIPPED) → task stays PENDING → `block_task` when dep fails |
+| Tool call fails (file write, command) | LangChain agent surfaces as exception → caught in `_execute` → `fail_task` |
+| Dependency failed | `get_ready_tasks` excludes (dep not COMPLETED/SKIPPED) → task stays PENDING → `block_task` called when dep fails |
 | DB locked (concurrent) | SQLite timeout=10s, WAL mode reduces contention |
 | Process crash mid-task | `IN_PROGRESS` at startup → `recovery.recover()` resets |
 
@@ -646,7 +648,7 @@ sqlite3 .educosys/tasks.db "SELECT * FROM tasks;"
 | Component | Logging |
 |-----------|---------|
 | `task_store` | `logger.info(f"Task {task_id} completed/failed")` |
-| `executor` | Tool calls: `logger.info(f"Task {task_id} → tool calls: {...}")` |
+| `executor` | Tool calls logged: `logger.info(f"Task {task_id} → tool calls: {...}")` |
 | `judge` | `logger.info(f"Judge verdict for {task_id}: score={score}, passed={passed}")` |
 | `orchestrator` | Progress printed to console every loop iteration |
 | `recovery` | Console prints for each recovered task |
@@ -682,6 +684,8 @@ Replace `_judge_task()` in `executor.py` with your own evaluator (e.g., pytest r
 ---
 
 ## 18. File-Level Docstrings (for IDE hover)
+
+Each module has a module-level docstring:
 
 ```python
 # orchestrator.py
