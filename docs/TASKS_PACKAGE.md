@@ -448,15 +448,15 @@ def handle_status_command() -> None:
 
 ```yaml
 tasks:
-  db_path: ".educosys/tasks.db"
+  db_path: ".radha/tasks.db"
 
 llm:
-  provider: "anthropic"
-  model: "claude-3-5-sonnet-20241022"
-  judge_model: "claude-3-5-haiku-20241022"  # cheaper for judge
+  provider: "openai"
+  model: "gpt-4o"
+  judge_model: "gpt-4o-mini"  # cheaper for judge
 ```
 
-**Accessed via:** `config.get("tasks", {}).get("db_path", ".educosys/tasks.db")`
+**Accessed via:** `config.get("tasks", {}).get("db_path", ".radha/tasks.db")`
 
 ---
 
@@ -578,7 +578,7 @@ educosys_claude/tasks/tests/
 /plan "create a hello world python script"
 
 # Inspect DB
-sqlite3 .educosys/tasks.db "SELECT * FROM tasks;"
+sqlite3 .radha/tasks.db "SELECT * FROM tasks;"
 
 # Check status
 /task_status

@@ -11,8 +11,9 @@ A sophisticated, modular code assistant powered by Retrieval-Augmented Generatio
 
 - **🧠 Advanced Language Understanding**: Leverages state-of-the-art LLMs (OpenAI/Anthropic) for contextual code comprehension
 - **🔍 Flexible Retrieval Strategies**: Hybrid, vector, and keyword-based search with pluggable backends (ChromaDB, Qdrant, Elasticsearch)
+- **💾 Dual Memory System**: Short-term (SQLite checkpointer with summarization) + Long-term (semantic fact extraction to vector store)
+- **🎯 Skills System**: Modular skill definitions in `SKILL.md` files — auto-discovered, lazy-loaded, injected into agent context
 - **⚙️ Highly Configurable**: YAML-driven architecture allowing easy customization of models, providers, and retrieval modes
-- **💾 Persistent Session Management**: SQLite-based checkpointer with token-aware summarization for context retention
 - **🔌 Extensible Tool System**: Plugin-based architecture for adding custom capabilities via MCP servers
 - **📊 Observability Built-in**: Structured logging and monitoring for performance insights
 - **💬 Interactive REPL**: Rich terminal interface with slash commands for intuitive interaction
@@ -27,8 +28,8 @@ A sophisticated, modular code assistant powered by Retrieval-Augmented Generatio
                               ▼                         ▼
                      ┌──────────────────┐    ┌────────────────────┐
                      │   Retrieval Mode │    │   Memory System    │
-                     │ (Hybrid/Vector/  │    │ (Short-term +      │
-                     │  Keyword)        │    │  Session Mgmt)     │
+                     │ (Hybrid/Vector/  │    │ (Short-term STM    │
+                     │  Keyword)        │    │  + Long-term LTM)  │
                      └──────────────────┘    └────────────────────┘
                               │                         │
                               ▼                         ▼
@@ -92,7 +93,7 @@ A sophisticated, modular code assistant powered by Retrieval-Augmented Generatio
 #### Common Issues
 - **Poetry not found**: Ensure Poetry is installed and added to your PATH (`curl -sSL https://install.python-poetry.org | python3 -`).
 - **Missing API keys**: The assistant will fail to start if neither `OPENAI_API_KEY` nor `ANTHROPIC_API_KEY` is set. Verify your `.env` file is in the project root and loaded.
-- **ChromaDB permission errors on Windows**: Make sure the `.\chromadb` directory is writable; run the terminal as Administrator or adjust folder permissions.
+- **ChromaDB permission errors on Windows**: Make sure the `.radha\chromadb` directory is writable; run the terminal as Administrator or adjust folder permissions.
 - **Elasticsearch connection refused**: Confirm Elasticsearch is running on `localhost:9200` or update the `url` in `config.yaml`.
 - **Missing dependencies after `poetry install`**: Run `poetry lock --no-update` then `poetry install` again to resolve lock‑file conflicts.
 
@@ -108,6 +109,8 @@ poetry run educosys_claude
 | Command | Description |
 |---------|-------------|
 | `/ask <question>` | Query the codebase using natural language |
+| `/plan <goal>` | Generate and execute a multi-step plan |
+| `/task_status` | Show progress of current/last plan |
 | `/show_index` | Display all indexed code chunks and statistics |
 | `/new_session` | Start a fresh conversation session |
 | `/switch <session_id>` | Switch to an existing session by ID |
@@ -429,13 +432,14 @@ All configuration is managed through `educosys_claude/config.yaml`:
 llm:
   provider: openai        # openai | anthropic
   model: gpt-4o
+  judge_model: gpt-4o-mini  # Cheaper model for task judging
 
 embeddings:
   provider: openai              
   model: text-embedding-3-small
 
 chromadb:
-  persist_dir: .chromadb/
+  persist_dir: .radha/chromadb/
   collection_name: codebase
 
 elasticsearch:
@@ -453,9 +457,62 @@ qdrant:
   collection_name: ladiamohit
 
 memory:
-  db_path: .memory/memory.db
+  db_path: .radha/memory/memory.db
   summarize_at_tokens: 4000
   keep_last_messages: 20
+
+skills:
+  skills_dir: .radha/skills
+
+tasks:
+  db_path: .radha/tasks.db
+
+logging:
+  root_level: DEBUG
+  file_path: .radha/logs/agent.log
+  max_bytes: 10485760
+  backup_count: 5
+  format: "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+  console: true
+
+middleware:
+  model_call_limit:
+    enabled: true
+    thread_limit: 100
+    run_limit: 50
+    exit_behavior: "end"
+  model_retry:
+    enabled: true
+    max_retries: 3
+    backoff_factor: 2.0
+    initial_delay: 1.0
+    max_delay: 60.0
+    jitter: true
+    retry_on: []
+    on_failure: "continue"
+  model_fallback:
+    enabled: true
+    fallback_models: []
+  tool_retry:
+    enabled: true
+    max_retries: 2
+    backoff_factor: 2.0
+    initial_delay: 1.0
+    max_delay: 30.0
+    jitter: true
+    tools: []
+    retry_on: []
+    on_failure: "continue"
+  pii:
+    enabled: true
+    action: "redact"
+    scope: ["model_input", "model_output", "tool_input", "tool_output"]
+    custom_patterns: []
+  content_filter:
+    enabled: true
+    action: "block"
+    scope: ["model_input", "model_output", "tool_input", "tool_output"]
+    custom_rules: []
 ```
 
 ### Configuration Reference Table
@@ -464,19 +521,32 @@ memory:
 |---------|-----|------|---------|----------------|-------------|
 | llm | provider | string | openai | openai, anthropic | LLM provider |
 | llm | model | string | gpt-4o | provider‑specific | Model name |
+| llm | judge_model | string | (same as model) | provider‑specific | Cheaper model for LLM-as-judge in task execution |
 | embeddings | provider | string | openai | openai, huggingface | Embedding provider |
 | embeddings | model | string | text-embedding-3-small | provider‑specific | Embedding model name |
-| chromadb | persist_dir | string | .chromadb/ | filesystem path | Persistence directory for ChromaDB |
+| chromadb | persist_dir | string | .radha/chromadb/ | filesystem path | Persistence directory for ChromaDB |
 | chromadb | collection_name | string | codebase | any string | Collection name in ChromaDB |
 | elasticsearch | url | string | http://localhost:9200 | URL | Elasticsearch endpoint |
 | elasticsearch | index_name | string | codebase | any string | Index name in Elasticsearch |
 | rag | mode | string | hybrid | hybrid, vector, keyword | Retrieval mode |
 | vector_store | provider | string | qdrant | chromadb, elasticsearch, qdrant | Vector store provider |
-| vector_store | retrieval_mode | string | hybrid | chromadb, elasticsearch, qdrant | Retrieval mode for vector store |
-| qdrant | collection_name | string | ladiamohit | any string | Collection name in Qdrant |
-| memory | db_path | string | .memory/memory.db | filesystem path | SQLite database path for memory |
+| vector_store | retrieval_mode | string | hybrid | dense, sparse, hybrid | Retrieval mode for Qdrant |
+| qdrant | collection_name | string | ladiamohit92 | any string | Collection name in Qdrant |
+| memory | db_path | string | .radha/memory/memory.db | filesystem path | SQLite database path for session store |
 | memory | summarize_at_tokens | integer | 4000 | positive int | Token threshold to trigger summarization |
 | memory | keep_last_messages | integer | 20 | positive int | Number of recent messages to keep after summarization |
+| skills | skills_dir | string | .radha/skills | filesystem path | Directory containing SKILL.md files |
+| tasks | db_path | string | .radha/tasks.db | filesystem path | SQLite database path for task store |
+| logging | root_level | string | DEBUG | DEBUG, INFO, WARNING, ERROR | Log level |
+| logging | file_path | string | .radha/logs/agent.log | filesystem path | Log file path |
+| middleware | model_call_limit.enabled | bool | true | true, false | Enable/disable model call limit |
+| middleware | model_call_limit.thread_limit | int | 100 | positive int | Max model calls per conversation thread |
+| middleware | model_call_limit.run_limit | int | 50 | positive int | Max model calls per single run |
+| middleware | model_retry.max_retries | int | 3 | positive int | Max retries on model failure |
+| middleware | model_fallback.fallback_models | list | [] | model identifiers | Fallback model identifiers |
+| middleware | tool_retry.max_retries | int | 2 | positive int | Max retries on tool failure |
+| middleware | pii.action | string | redact | redact, block, log_only | PII handling action |
+| middleware | content_filter.action | string | block | block, log_only | Content filter action |
 
 ### Supported Providers
 
@@ -512,6 +582,78 @@ The guardrails run in this order (inner to outer):
 
 See [docs/GUARDRAILS_PACKAGE.md](docs/GUARDRAILS_PACKAGE.md) for full configuration and custom pattern examples.
 
+## 🎯 Skills System
+
+The agent supports a modular **Skills System** for defining reusable workflows and best practices.
+
+### What are Skills?
+
+Skills are markdown files (`SKILL.md`) that define step-by-step instructions for specific tasks. They are:
+- **Auto-discovered**: Scanned from `skills_dir` (default: `.radha/skills/`)
+- **Lazy-loaded**: Full content loaded on demand via `load_skill` tool
+- **Token-efficient**: Only metadata (name + description) injected into system prompt (~5 tokens/skill)
+
+### Skill File Format
+
+Create a file at `.radha/skills/my_skill/SKILL.md`:
+
+```markdown
+---
+name: my-skill
+description: One-line description shown to LLM
+---
+
+# My Skill Title
+
+Step-by-step instructions the LLM should follow when this skill is invoked.
+
+## Steps
+1. First step
+2. Second step
+3. ...
+
+## Support Files
+- `scripts/helper.py` — Optional support files the LLM can read
+```
+
+### How Skills Work
+
+1. **Discovery**: `SkillRegistry.load()` scans `skills_dir` for `SKILL.md` files
+2. **Injection**: `build_skills_prompt()` appends skill names + descriptions to system prompt
+3. **Invocation**: When user request matches a skill, LLM calls `load_skill("my-skill")` tool
+4. **Execution**: Full skill instructions loaded, LLM follows the steps
+
+### Configuration
+
+```yaml
+skills:
+  skills_dir: .radha/skills  # Directory containing skill folders
+```
+
+## 🧠 Long-Term Memory (LTM)
+
+The agent maintains **Long-Term Memory** across conversation sessions — extracting and storing semantic facts about user preferences, project context, and recurring patterns.
+
+### How It Works
+
+1. **Extraction**: After each conversation, LLM extracts durable facts (preferences, patterns, project context)
+2. **Storage**: Facts stored in separate vector store collection (`user_memory`) from codebase index
+3. **Retrieval**: On new queries, relevant facts retrieved via semantic similarity
+4. **Injection**: Retrieved facts injected into agent context as background knowledge
+
+### Fact Categories
+
+| Category | Examples |
+|----------|----------|
+| `preference` | "User prefers pytest over unittest", "User likes TypeScript with strict mode" |
+| `pattern` | "User often asks for tests before implementation" |
+| `fact` | "Team uses GitHub Actions for CI", "Project deploys to AWS" |
+| `project_context` | "Project uses FastAPI with async SQLAlchemy", "API versioning via URL path" |
+
+### Usage
+
+Long-term memory is automatic — no configuration needed. Facts accumulate across sessions and are retrieved when relevant to the current query.
+
 ## 🧪 Testing
 
 ### Unit Tests
@@ -546,7 +688,7 @@ For automated CI you can script the REPL using `expect` or a similar tool, feedi
 4. Restart the agent; the new tool will be available for the LLM to invoke.
 
 ### Adding MCP Servers
-1. Define your MCP server configuration in `educosys_claude/mcp/educosys_mcp_config.py`.
+1. Define your MCP server configuration in `educosys_claude/mcp/educosys_mcp_servers.json`.
 2. Add the server name to the `mcp_servers` list in `config.yaml`.
 3. Restart the agent; the server’s tools will be auto‑loaded.
 
@@ -572,6 +714,33 @@ gh workflow run agent.yml -f question="Create a PR adding a README"
 ```
 
 **Human Review:** Bot posts comment on tracking issue → Reviewer replies `/APPROVE` → Workflow resumes.
+
+See [docs/HITL_GITHUB_ACTIONS.md](docs/HITL_GITHUB_ACTIONS.md) for full setup, configuration, and troubleshooting.
+
+### Extending the Agent
+
+### Adding Custom Tools
+1. Create a new tool file under `educosys_claude/tools/` (e.g., `my_tool.py`).
+2. Implement a function decorated with `@tool` from LangChain, returning a string.
+3. Export the tool in `educosys_claude/agent/tools.py` by importing and adding it to the `TOOLS` list.
+4. Restart the agent; the new tool will be available for the LLM to invoke.
+
+### Adding MCP Servers
+1. Define your MCP server configuration in `educosys_claude/mcp/educosys_mcp_servers.json`.
+2. Add the server name to the `mcp_servers` list in `config.yaml`.
+3. Restart the agent; the server’s tools will be auto‑loaded.
+
+### GitHub Actions Human-in-the-Loop (HITL)
+
+The agent supports **Human-in-the-Loop approval** for dangerous tools (shell commands, file writes, GitHub API calls) in CI environments.
+
+**Three Approaches:**
+
+| Approach | Mechanism | Best For |
+|----------|-----------|----------|
+| Environment Protection | Workflow pauses at `environment: production` | Production deployments, compliance |
+| Comment Polling (default) | Bot posts comment, polls for `/APPROVE`/`/REJECT`/`/EDIT` | General CI, standard `GITHUB_TOKEN` |
+| GitHub Gist | Private gist stores state, polls for updates | Fork PRs, minimal permissions |
 
 See [docs/HITL_GITHUB_ACTIONS.md](docs/HITL_GITHUB_ACTIONS.md) for full setup, configuration, and troubleshooting.
 
@@ -602,6 +771,10 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed release notes.
 - Introduced hybrid retrieval mode  
 - Improved session summarization latency  
 - Fixed ChromaDB persistence on Windows  
+- Added Skills system support (load_skill tool, build_skills_prompt, skills_dir config)  
+- Added Long-term memory (LTM) to Key Features and architecture diagram  
+- Added Skills system to FAQ and Extending the Agent sections  
+- Fixed path references throughout documentation (`.radha/` prefix)  
 
 ## 🔒 Security Policy
 
@@ -613,10 +786,10 @@ Please report security vulnerabilities privately via email to security@radhacode
 A: The LLM factory currently supports OpenAI and Anthropic. Adding a local LLM requires extending `educosys_claude/llm/factory.py` – contributions welcome!
 
 **Q: Where are session files stored?**  
-A: Session data lives in the SQLite database at `.memory/memory.db` by default (configurable via `memory.db_path`).
+A: Session data lives in the SQLite database at `.radha/memory/memory.db` by default (configurable via `memory.db_path`).
 
 **Q: How do I reset the vector index?**  
-A: Delete the persistence directory (e.g., `.chromadb`, `.qdrant`, or the Elasticsearch index) and restart the assistant; it will re‑index on first query.
+A: Delete the persistence directory (e.g., `.radha/chromadb`, `.qdrant`, or the Elasticsearch index) and restart the assistant; it will re‑index on first query.
 
 **Q: Does the tool support Windows?**  
 A: Yes – all dependencies are cross‑platform. Ensure Poetry and a compatible Python 3.12+ are installed.
@@ -671,6 +844,6 @@ run()
 |----------|-------------|
 | [docs/AGENT_PACKAGE.md](docs/AGENT_PACKAGE.md) | Agent factory, orchestrator, HITL middleware, GitHub Actions integration |
 | [docs/MEMORY_PACKAGE.md](docs/MEMORY_PACKAGE.md) | Short-term (checkpointer, summarization) & Long-term (fact extraction) memory |
-| [docs/MIDDLEWARE_PACKAGE.md](docs/MIDDLEWARE_PACKAGE.md) | 6-middleware stack: ModelCallLimit, ModelRetry, ModelFallback, ToolRetry, HITL, Summarization |
+| [docs/MIDDLEWARE_PACKAGE.md](docs/MIDDLEWARE_PACKAGE.md) | 8-middleware stack: ModelCallLimit, ModelRetry, ModelFallback, ToolRetry, PII, ContentFilter, HITL, Summarization |
 | [docs/TOOLS_PACKAGE.md](docs/TOOLS_PACKAGE.md) | Filesystem tools, terminal tools, HITL integration |
 | [docs/GUARDRAILS_PACKAGE.md](docs/GUARDRAILS_PACKAGE.md) | PII detection/redaction and content filtering middleware |

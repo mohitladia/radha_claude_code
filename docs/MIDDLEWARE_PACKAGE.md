@@ -30,6 +30,10 @@ ModelFallbackMiddleware           ← Falls back to alt models if primary down
     ↓
 ToolRetryMiddleware               ← Retries failed tool calls (scoped to tools)
     ↓
+PIIMiddleware                     ← Detects/redacts PII (email, SSN, API keys, tokens)
+    ↓
+ContentFilterMiddleware           ← Blocks prohibited content (violence, illegal, self-harm)
+    ↓
 HumanInTheLoopMiddleware          ← Pauses for approval on dangerous tools
     ↓
 SummarizationMiddleware           ← Compresses history if tokens exceed threshold
@@ -150,7 +154,72 @@ middleware:
 
 ---
 
-## 5. HumanInTheLoopMiddleware
+## 5. PIIMiddleware
+
+**Purpose**: Detects and handles sensitive data (PII) in model inputs/outputs and tool calls.
+
+**Config** (`config.yaml`):
+```yaml
+middleware:
+  pii:
+    enabled: true
+    action: "redact"           # "redact" | "block" | "log_only"
+    scope:                     # Apply to which message types
+      - "model_input"
+      - "model_output"
+      - "tool_input"
+      - "tool_output"
+    custom_patterns: []        # Additional regex patterns to detect
+```
+
+**Default Patterns Detected**:
+- Email addresses
+- US phone numbers
+- Social Security Numbers
+- Credit card numbers
+- API keys (OpenAI, Anthropic, generic)
+- AWS keys
+- GitHub tokens
+- IP addresses
+- JWT tokens
+
+**Behavior**:
+- `redact`: Replace with `[REDACTED:TYPE]` (e.g., `[REDACTED:EMAIL]`)
+- `block`: Raise error, stop execution
+- `log_only`: Warn only, don't modify
+
+---
+
+## 6. ContentFilterMiddleware
+
+**Purpose**: Blocks or flags prohibited content.
+
+**Config** (`config.yaml`):
+```yaml
+middleware:
+  content_filter:
+    enabled: true
+    action: "block"            # "block" | "log_only"
+    scope:                     # Apply to which message types
+      - "model_input"
+      - "model_output"
+    severity_threshold: "medium"  # "low" | "medium" | "high" | "critical"
+    custom_rules: []           # Additional content rules
+```
+
+**Default Rules**:
+- Violence
+- Self-harm
+- Illegal acts
+- PII requests
+- Hate speech (log only by default)
+- Sexual content
+
+**Severity Levels**: low, medium, high, critical — threshold controls enforcement
+
+---
+
+## 7. HumanInTheLoopMiddleware
 
 **Purpose**: Pauses agent execution for human approval before executing dangerous tools.
 
@@ -182,7 +251,7 @@ interrupt_on = {
 
 ---
 
-## 6. SummarizationMiddleware (Short-Term Memory)
+## 8. SummarizationMiddleware (Short-Term Memory)
 
 **Purpose**: Compresses conversation history when token count exceeds threshold.
 
@@ -245,6 +314,8 @@ middleware = [
 | ModelRetry | `middleware.model_retry` | No | enabled, retries=3, backoff=2.0 |
 | ModelFallback | `middleware.model_fallback` | No | enabled, no fallbacks |
 | ToolRetry | `middleware.tool_retry` | No | enabled, retries=2, all tools |
+| PIIMiddleware | `middleware.pii` | No | enabled, action=redact |
+| ContentFilter | `middleware.content_filter` | No | enabled, action=block |
 | HITL | `factory.py` code | Yes | — |
 | Summarization | `memory.*` | No | tokens=4000, keep=20 |
 

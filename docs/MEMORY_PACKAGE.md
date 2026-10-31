@@ -39,7 +39,7 @@ educosys_claude/memory/
 
 ```python
 # Session file location
-SESSION_FILE = Path(".memory/current_session")
+SESSION_FILE = Path(".radha/memory/current_session")
 
 def get_current_session() -> str:
     """Get current session ID, creating one if needed."""
@@ -82,7 +82,7 @@ def switch_session(session_id: str) -> str:
 **Configuration** (`config.yaml`):
 ```yaml
 memory:
-  db_path: .memory/memory.db              # SQLite for short-term checkpointer
+  db_path: .radha/memory/memory.db        # SQLite for short-term checkpointer
   summarize_at_tokens: 4000               # Trigger summarization
   keep_last_messages: 20                  # Verbatim retention
 ```
@@ -353,14 +353,15 @@ HITL RESUME FLOW:
 #### Session Persistence
 
 ```
-.memory/
-├── current_session          # "a1b2c3d4-uuid" — current thread_id
-└── memory.db                # SQLite with all checkpoints
+.radha/
+└── memory/
+    ├── current_session          # "a1b2c3d4-uuid" — current thread_id
+    └── memory.db                # SQLite with all checkpoints
 ```
 
 ```python
 # memory/session.py
-SESSION_FILE = Path(".memory/current_session")
+SESSION_FILE = Path(".radha/memory/current_session")
 
 def get_current_session() -> str:
     if SESSION_FILE.exists():
@@ -379,16 +380,16 @@ def new_session() -> str:
 
 ```bash
 # View checkpoints for current session
-sqlite3 .memory/memory.db "SELECT thread_id, checkpoint_id, parent_checkpoint_id 
+sqlite3 .radha/memory/memory.db "SELECT thread_id, checkpoint_id, parent_checkpoint_id 
                            FROM checkpoints 
-                           WHERE thread_id = $(cat .memory/current_session);"
+                           WHERE thread_id = $(cat .radha/memory/current_session);"
 
 # View message count per checkpoint
-sqlite3 .memory/memory.db "SELECT thread_id, json_array_length(json_extract(checkpoint, '$.messages'))
+sqlite3 .radha/memory/memory.db "SELECT thread_id, json_array_length(json_extract(checkpoint, '$.messages'))
                            FROM checkpoints;"
 
 # Inspect a specific checkpoint
-sqlite3 .memory/memory.db "SELECT json_extract(checkpoint, '$.messages[0]') 
+sqlite3 .radha/memory/memory.db "SELECT json_extract(checkpoint, '$.messages[0]') 
                            FROM checkpoints WHERE checkpoint_id = '...';"
 ```
 
@@ -401,7 +402,7 @@ sqlite3 .memory/memory.db "SELECT json_extract(checkpoint, '$.messages[0]')
 | **Runs before model?** | No — runs **during** graph execution, after each node |
 | **What triggers it?** | Token count > `summarize_at_tokens` (default 4000) |
 | **What does LLM see?** | Summary + last N messages (default 20) |
-| **Where stored?** | SQLite (`.memory/memory.db`) via checkpointer |
+| **Where stored?** | SQLite (`.radha/memory/memory.db`) via checkpointer |
 | **Survives restart?** | Yes — checkpointer loads last checkpoint |
 | **New session = clean slate?** | Yes for short-term; long-term memory persists |
 | **HITL resume safe?** | Yes — **if** `PatchToolCallsMiddleware` is FIRST |
@@ -766,7 +767,7 @@ Configured in `config.yaml`:
 
 ```yaml
 memory:
-  db_path: .memory/memory.db              # SQLite for short-term checkpointer
+  db_path: .radha/memory/memory.db        # SQLite for short-term checkpointer
   summarize_at_tokens: 4000               # Trigger summarization
   keep_last_messages: 20                  # Verbatim retention
 
@@ -892,7 +893,7 @@ for f in facts:
 
 # Check short-term SQLite
 import sqlite3
-conn = sqlite3.connect(".memory/memory.db")
+conn = sqlite3.connect(".radha/memory/memory.db")
 cursor = conn.execute("SELECT * FROM checkpoints WHERE thread_id = ?", (session_id,))
 for row in cursor:
     print(row)
@@ -915,7 +916,7 @@ for row in cursor:
 
 | Aspect | Short-Term | Long-Term |
 |--------|------------|-----------|
-| **Storage** | SQLite (`.memory/memory.db`) | Vector DB (Qdrant/Chroma) |
+| **Storage** | SQLite (`.radha/memory/memory.db`) | Vector DB (Qdrant/Chroma) |
 | **Latency** | Minimal (checkpoint write) | Extraction: ~1-2s LLM call; Retrieval: ~50-200ms |
 | **Scope** | Single session | Cross-session, persistent |
 | **Content** | Full conversation (summarized) | Distilled facts only |
@@ -929,6 +930,7 @@ for row in cursor:
 ### Adjust Summarization (config.yaml)
 ```yaml
 memory:
+  db_path: .radha/memory/memory.db
   summarize_at_tokens: 6000      # Higher = less frequent summarization
   keep_last_messages: 15         # More verbatim context
 ```
@@ -973,7 +975,7 @@ def _get_vector_store(self):
 | High token usage from memory context | Reduce `k` in `get_context_for_query(k=3)` |
 | Extraction fails silently | Check logs for LLM errors; verify JSON parsing in `_parse_llm_facts` |
 | Short-term not summarizing | Verify `summarize_at_tokens` config; check middleware order |
-| Session not persisting | Check `.memory/current_session` file permissions |
+| Session not persisting | Check `.radha/memory/current_session` file permissions |
 | 400 error on HITL resume | Ensure `PatchToolCallsMiddleware` is FIRST in middleware list |
 
 ---
@@ -989,12 +991,12 @@ Logging is configured in `config.yaml` under the `logging` key and initialized i
 ### Config (`config.yaml`)
 ```yaml
 logging:
-  level: "DEBUG"                    # DEBUG | INFO | WARNING | ERROR
-  file_path: ".radha/logs/agent.log"  # Log file path (rotated)
-  max_bytes: 10485760               # 10 MB per file
-  backup_count: 5                   # Keep 5 rotated files
+  root_level: "DEBUG"                    # DEBUG | INFO | WARNING | ERROR
+  file_path: ".radha/logs/agent.log"     # Log file path (rotated)
+  max_bytes: 10485760                    # 10 MB per file
+  backup_count: 5                        # Keep 5 rotated files
   format: "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
-  console: true                     # Also log to stdout
+  console: true                          # Also log to stdout
 ```
 
 ### Directory Structure

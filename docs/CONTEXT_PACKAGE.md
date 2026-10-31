@@ -70,7 +70,7 @@ The same logic applies to the index inspector (show_index function).
 #### a) ChromaDB Semantic Indexer (`indexers/semantic_chroma.py`)
 - Uses ChromaDB vector store
 - Dense vector embeddings only
-- Persistent storage in `.chroma: .chromadb/ directory
+- Persistent storage in `.radha/chromadb/` directory
 - Collection name from config: `chromadb.collection_name`
 
 #### b) Qdrant Semantic Indexer (`indexers/semantic_qdrant.py`)
@@ -195,7 +195,7 @@ vector_store:
 
 # ChromaDB Settings
 chromadb:
-  persist_dir: .chromadb/
+  persist_dir: .radha/chromadb/
   collection_name: codebase
 
 # Elasticsearch Settings  
@@ -357,7 +357,7 @@ To change how code is chunked:
 ## 🔧 Troubleshooting
 
 ### Common Issues
-1. **"No such file or directory" for .chromadb/**:
+1. **"No such file or directory" for .radha/chromadb/**:
    - Ensure the directory exists or is creatable
    - Check permissions on the directory
 

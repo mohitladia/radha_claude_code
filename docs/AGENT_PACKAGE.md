@@ -24,13 +24,15 @@ educosys_claude/agent/
   - LLM from `llm.factory.get_llm()`
   - Tools including:
     - `search_codebase` (custom tool for querying the codebase)
+    - `load_skill` (load skill definitions from `.radha/skills/` directory)
     - Terminal tools (`run_command`, `run_in_directory`)
-    - Filesystem tools (`read_file`, `write_file`, `append_file`, `delete_file`, `list_directory`, `file_exists`)
+    - Filesystem tools (`read_file`, `write_file`, `append_file`, `list_directory`, `file_exists`)
     - MCP tools from configured servers
   - System prompt that instructs the agent to:
     - Always use `search_codebase` before answering
     - Reference specific file names, function names, and line numbers
     - Admit when answers aren't found in the codebase
+    - Skills prompt from `build_skills_prompt()` appended to system prompt
   - Persistent checkpointer for session memory
   - **Middleware Stack** (8 layers, order matters — inner wraps outer):
 
